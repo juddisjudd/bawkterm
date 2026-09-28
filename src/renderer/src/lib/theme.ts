@@ -1,0 +1,63 @@
+import type { ITheme } from '@xterm/xterm'
+
+export const terminalThemes: Record<'dark' | 'light', ITheme> = {
+  dark: {
+    background: '#141010',
+    foreground: '#e4dede',
+    cursor: '#f2eded',
+    cursorAccent: '#141010',
+    selectionBackground: '#fdffcc',
+    selectionForeground: '#141010',
+    selectionInactiveBackground: '#4a4a3c',
+    black: '#2a2525',
+    red: '#e06c75',
+    green: '#7fd88f',
+    yellow: '#f5a742',
+    blue: '#5c9cf5',
+    magenta: '#9d7cd8',
+    cyan: '#56b6c2',
+    white: '#b8b2b2',
+    brightBlack: '#6e6767',
+    brightRed: '#f08a92',
+    brightGreen: '#a2e8ad',
+    brightYellow: '#fab283',
+    brightBlue: '#86b6ff',
+    brightMagenta: '#b99cec',
+    brightCyan: '#80d2dc',
+    brightWhite: '#f2eded'
+  },
+  light: {
+    background: '#fdfcfc',
+    foreground: '#211e1e',
+    cursor: '#211e1e',
+    cursorAccent: '#fdfcfc',
+    selectionBackground: '#f5f7b8',
+    selectionForeground: '#211e1e',
+    selectionInactiveBackground: '#ecebd5',
+    black: '#211e1e',
+    red: '#c53b46',
+    green: '#2f8a3f',
+    yellow: '#a86a00',
+    blue: '#2c6bd6',
+    magenta: '#7a4fc0',
+    cyan: '#1f8795',
+    white: '#8a8585',
+    brightBlack: '#5c5757',
+    brightRed: '#d9535e',
+    brightGreen: '#3a9f4c',
+    brightYellow: '#c2621c',
+    brightBlue: '#4a84e8',
+    brightMagenta: '#9166d6',
+    brightCyan: '#2a9eae',
+    brightWhite: '#b3adad'
+  }
+}
+
+export function cssHex(name: string): string {
+  const probe = document.createElement('span')
+  probe.style.color = `var(${name})`
+  document.body.append(probe)
+  const rgb = getComputedStyle(probe).color.match(/\d+(\.\d+)?/g) ?? ['0', '0', '0']
+  probe.remove()
+  return '#' + rgb.slice(0, 3).map((v) => Math.round(Number(v)).toString(16).padStart(2, '0')).join('')
+}

@@ -1,0 +1,361 @@
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: hsl(0 9% 7%);
+  --bg-weak: hsl(0 6% 10%);
+  --bg-weak-hover: hsl(0 6% 15%);
+  --bg-strong: hsl(0 15% 94%);
+  --bg-strong-hover: hsl(0 15% 97%);
+  --bg-interactive: hsl(62 100% 90%);
+  --bg-selected: hsl(60 14% 15%);
+  --text: hsl(0 4% 71%);
+  --text-weak: hsl(0 2% 49%);
+  --text-weaker: hsl(0 3% 28%);
+  --text-strong: hsl(0 15% 94%);
+  --text-inverted: hsl(0 9% 7%);
+  --border: hsl(0 3% 28%);
+  --border-weak: hsl(0 4% 18%);
+  --icon: hsl(10 3% 43%);
+  --danger: #e06c75;
+  --success: #7fd88f;
+  --warning: #f5a742;
+  --accent: #fab283;
+  --shadow: 0 16px 48px hsl(0 0% 0% / 0.5);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: hsl(0 20% 99%);
+  --bg-weak: hsl(0 8% 97%);
+  --bg-weak-hover: hsl(0 8% 94%);
+  --bg-strong: hsl(0 5% 12%);
+  --bg-strong-hover: hsl(0 5% 18%);
+  --bg-interactive: hsl(62 84% 88%);
+  --bg-selected: hsl(62 84% 90%);
+  --text: hsl(0 1% 39%);
+  --text-weak: hsl(0 1% 60%);
+  --text-weaker: hsl(30 2% 81%);
+  --text-strong: hsl(0 5% 12%);
+  --text-inverted: hsl(0 20% 99%);
+  --border: hsl(30 2% 81%);
+  --border-weak: hsla(0 100% 3% / 0.1);
+  --icon: hsl(0 1% 55%);
+  --danger: #c53b46;
+  --success: #2f8a3f;
+  --warning: #a86a00;
+  --accent: #c2621c;
+  --shadow: 0 16px 48px hsl(0 0% 0% / 0.12);
+}
+
+:root {
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --titlebar: 40px;
+  --radius: 4px;
+  --radius-lg: 6px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+::selection {
+  background: var(--bg-interactive);
+  color: var(--text-inverted);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  color: var(--text-strong);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+h2 {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+a {
+  color: var(--text-strong);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 1px solid var(--text-strong);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-weak);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-strong);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-weak-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.strong {
+  border-color: transparent;
+  background: var(--bg-strong);
+  color: var(--text-inverted);
+  font-weight: 500;
+}
+
+.btn.strong:hover:not(:disabled) {
+  background: var(--bg-strong-hover);
+}
+
+.btn.danger {
+  color: var(--danger);
+}
+
+.btn.danger.strong {
+  background: var(--danger);
+  color: var(--text-inverted);
+}
+
+.btn.ghost {
+  border-color: transparent;
+  color: var(--text);
+}
+
+.btn.ghost:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.btn.icon {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.btn.small {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.btn.small.icon {
+  width: 24px;
+  padding: 0;
+}
+
+
+.btn svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius);
+  background: var(--bg-weak);
+  color: var(--text-strong);
+  font: inherit;
+  user-select: text;
+}
+
+.textarea {
+  height: auto;
+  min-height: 80px;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.select {
+  appearance: none;
+  padding-right: 28px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-weak) 50%),
+    linear-gradient(135deg, var(--text-weak) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-weaker);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > .label {
+  color: var(--text-weak);
+  font-size: 12px;
+}
+
+.field > .hint {
+  color: var(--text-weak);
+  font-size: 12px;
+}
+
+.row-fields {
+  display: grid;
+  grid-template-columns: 1fr 96px;
+  gap: 12px;
+}
+
+.mono-block {
+  padding: 10px 12px;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius);
+  background: var(--bg-weak);
+  color: var(--text-strong);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.muted {
+  color: var(--text-weak);
+}
+
+.strong {
+  color: var(--text-strong);
+}
+
+.kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border-weak);
+  border-radius: 3px;
+  color: var(--text-weak);
+  font-size: 11px;
+}
+
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-weaker);
+  flex: none;
+}
+
+.dot.connected {
+  background: var(--success);
+}
+
+.dot.connecting {
+  background: var(--warning);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.dot.error {
+  background: var(--danger);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+.selectable {
+  user-select: text;
+}
+
+[hidden] {
+  display: none !important;
+}
