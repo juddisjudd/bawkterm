@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, net, protocol, shell } from 'electron'
+import { execFileSync } from 'node:child_process'
 import { join, normalize, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { registerIpc, type Services } from './ipc'
@@ -9,6 +10,25 @@ let services: Services | undefined
 
 // The renderer is served from this https origin (answered locally, never fetched) so passkeys have a valid RP ID.
 const APP_HOST = 'bawkterm.bawkbawk.net'
+
+function iconFile(light: boolean): string {
+  const name = light ? 'icon-light.ico' : 'icon.ico'
+  return app.isPackaged ? join(process.resourcesPath, name) : join(app.getAppPath(), 'build', name)
+}
+
+// the taskbar follows the Windows mode, which can differ from the app mode nativeTheme reports
+function taskbarIsLight(): boolean {
+  try {
+    const out = execFileSync(
+      'reg',
+      ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'SystemUsesLightTheme'],
+      { encoding: 'utf8', windowsHide: true }
+    )
+    return /SystemUsesLightTheme\s+REG_DWORD\s+0x1\b/.test(out)
+  } catch {
+    return !nativeTheme.shouldUseDarkColors
+  }
+}
 
 function serveRenderer(): void {
   const root = normalize(join(__dirname, '../renderer'))
@@ -28,9 +48,9 @@ function createWindow(vault: Vault): BrowserWindow {
     minWidth: 760,
     minHeight: 480,
     show: false,
-    backgroundColor: '#141010',
+    backgroundColor: '#13100f',
     title: 'bawkterm',
-    icon: app.isPackaged ? undefined : join(app.getAppPath(), 'build/icon.ico'),
+    icon: iconFile(taskbarIsLight()),
     titleBarStyle: 'hidden',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -42,6 +62,9 @@ function createWindow(vault: Vault): BrowserWindow {
   })
 
   win.once('ready-to-show', () => win.show())
+  const onTheme = (): void => win.setIcon(nativeImage.createFromPath(iconFile(taskbarIsLight())))
+  nativeTheme.on('updated', onTheme)
+  win.once('closed', () => nativeTheme.off('updated', onTheme))
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)

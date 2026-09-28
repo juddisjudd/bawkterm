@@ -3,9 +3,12 @@
   import { app, type Section } from '$lib/state.svelte'
   import { focusOnMount } from '$lib/focus'
   import { terminalFor } from '$lib/sessions'
+  import { tint } from '$lib/folders'
+  import Folder from '@lucide/svelte/icons/folder'
 
   type Item =
     | { kind: 'host'; host: Host }
+    | { kind: 'folder'; host: Host; path: string }
     | { kind: 'adhoc'; target: AdhocTarget }
     | { kind: 'snippet'; snippet: Snippet }
     | { kind: 'command'; label: string; run: () => void }
@@ -61,13 +64,32 @@
       .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || a.label.localeCompare(b.label))
       .slice(0, 12)
       .map((host): Item => ({ kind: 'host', host }))
+    const folders = !q
+      ? []
+      : (app.vault?.hosts ?? [])
+          .flatMap((host) => host.bookmarks.map((path): Item => ({ kind: 'folder', host, path })))
+          .filter(
+            (f) =>
+              f.kind === 'folder' &&
+              [f.path, f.host.label, f.host.address].some((v) => v.toLowerCase().includes(q))
+          )
+          .slice(0, 8)
     const adhoc = parseTarget(query)
     const cmds = commands.filter((c) => c.kind === 'command' && q && c.label.includes(q))
     const lead = adhoc ? [{ kind: 'adhoc', target: adhoc } as Item] : []
-    return terminalTab && q ? [...lead, ...snippets, ...hosts, ...cmds] : [...lead, ...hosts, ...snippets, ...cmds]
+    return terminalTab && q
+      ? [...lead, ...snippets, ...hosts, ...folders, ...cmds]
+      : [...lead, ...hosts, ...folders, ...snippets, ...cmds]
   })
 
   const current = $derived(items[index])
+
+  function keyOf(item: Item): string {
+    if (item.kind === 'host') return item.host.id
+    if (item.kind === 'folder') return `${item.host.id}:${item.path}`
+    if (item.kind === 'snippet') return item.snippet.id
+    return item.kind === 'adhoc' ? 'adhoc' : item.label
+  }
 
   function run(item: Item | undefined, shift: boolean, ctrl = false): void {
     if (!item) return
@@ -80,6 +102,11 @@
       }
       if (shift) terminal.paste(item.snippet.command)
       else terminal.run(item.snippet.command)
+      return
+    }
+    if (item.kind === 'folder') {
+      app.rememberPath(item.host.id, item.path)
+      app.openHost('sftp', item.host.id)
       return
     }
     const sftp = shift
@@ -121,7 +148,7 @@
       />
     </div>
     <ul>
-      {#each items as item, i (item.kind === 'host' ? item.host.id : item.kind === 'snippet' ? item.snippet.id : item.kind === 'adhoc' ? 'adhoc' : item.label)}
+      {#each items as item, i (keyOf(item))}
         <li>
           <button
             type="button"
@@ -134,6 +161,11 @@
               <span class="meta"
                 >{item.host.kind === 'rdp' ? 'rdp · ' : ''}{item.host.username ? `${item.host.username}@` : ''}{item.host.address}</span
               >
+            {:else if item.kind === 'folder'}
+              <span class="name folder" style:--tint={tint(item.host.folderColors[item.path])}
+                ><Folder size={13} class="icon" /> {item.path.split('/').filter(Boolean).at(-1) ?? '/'}</span
+              >
+              <span class="meta">sftp · {item.host.label || item.host.address} · {item.path}</span>
             {:else if item.kind === 'adhoc'}
               <span class="name">connect</span>
               <span class="meta"
@@ -156,7 +188,9 @@
       {/each}
     </ul>
     <footer>
-      {#if current?.kind === 'snippet'}
+      {#if current?.kind === 'folder'}
+        <span><span class="kbd">enter</span> open in sftp</span>
+      {:else if current?.kind === 'snippet'}
         <span><span class="kbd">enter</span> run</span>
         <span><span class="kbd">shift+enter</span> paste only</span>
       {:else}
@@ -178,7 +212,7 @@
     justify-content: center;
     align-items: flex-start;
     padding-top: 12vh;
-    background: hsl(0 0% 0% / 0.35);
+    background: oklch(0 0 0 / 0.35);
   }
   .palette {
     width: min(620px, calc(100vw - 48px));
@@ -237,6 +271,15 @@
   .name {
     flex: none;
     color: var(--text-strong);
+  }
+  .folder {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .folder :global(.icon) {
+    color: var(--tint, var(--icon));
+    fill: color-mix(in oklch, var(--tint, transparent) 30%, transparent);
   }
   .dollar {
     color: var(--text-weak);

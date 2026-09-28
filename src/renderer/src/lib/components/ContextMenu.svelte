@@ -30,6 +30,36 @@
     {#each app.menu.items as item, i (i)}
       {#if item === 'sep'}
         <div class="sep"></div>
+      {:else if 'swatches' in item}
+        <div class="swatches" role="group" aria-label="folder color">
+          <span class="swatch-label">color</span>
+          {#each item.swatches as color (color)}
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={item.current === color}
+              aria-label={color}
+              title={color}
+              class={['swatch', item.current === color && 'on']}
+              style:--swatch={`var(--folder-${color})`}
+              onclick={() => {
+                close()
+                item.pick(color)
+              }}
+            ></button>
+          {/each}
+          <button
+            type="button"
+            class="swatch none"
+            aria-label="no color"
+            title="no color"
+            disabled={!item.current}
+            onclick={() => {
+              close()
+              item.pick(null)
+            }}>×</button
+          >
+        </div>
       {:else}
         <button
           type="button"
@@ -78,6 +108,47 @@
   }
   .danger {
     color: var(--danger);
+  }
+  .swatches {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+  }
+  .swatch-label {
+    flex: 1;
+    color: var(--text-strong);
+  }
+  .swatches .swatch {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background: var(--swatch);
+    color: var(--text-weak);
+    font-size: 12px;
+    line-height: 1;
+  }
+  .swatches .swatch:hover:not(:disabled) {
+    background: var(--swatch);
+    outline: 1px solid var(--border);
+    outline-offset: 1px;
+  }
+  .swatches .swatch.on {
+    outline: 2px solid var(--text-strong);
+    outline-offset: 1px;
+  }
+  .swatches .swatch.none {
+    border-color: var(--border);
+    background: none;
+  }
+  .swatches .swatch.none:hover:not(:disabled) {
+    background: none;
+    color: var(--text-strong);
   }
   .sep {
     height: 1px;

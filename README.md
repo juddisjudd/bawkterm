@@ -33,9 +33,9 @@ The installer is unsigned, so Windows SmartScreen asks once: **More info → Run
 - **Vault**: a random vault key (AES-256-GCM) encrypts every host, key, password and trusted host key in `%APPDATA%/bawkterm/vault.json`. The master password (scrypt N=2^17) holds a wrapped copy of that key, so changing it never re-keys the vault. Optional auto-unlock uses Windows DPAPI. Auto-lock after idle minutes.
 - **Windows Hello and passkey unlock**: extra ways to open the vault, each with its own wrapped copy of the vault key. Windows Hello uses a TPM-backed Hello key whose deterministic signature derives the unwrapping key. Passkeys (phone via QR, security key, or this PC) use the WebAuthn PRF extension. The app is served from `https://bawkterm.bawkbawk.net` (answered locally, never fetched) so passkeys have a valid RP ID; dev builds use `localhost`, so passkeys set up in dev do not work in the installed app.
 - **SSH**: xterm.js tabs with WebGL rendering, flow control, jump hosts (chained), agent auth (OpenSSH agent or Pageant), keyboard-interactive, password and key prompts with "save to vault".
-- **Terminal comforts**: auto-reconnect with backoff when a connection drops (terminal, SFTP and Docker tabs; edits saved while offline upload once back), a per-host command to run after connect, a prompt before multi-line pastes (unless the shell uses bracketed paste), scrollback search, per-tab zoom, OSC 52 copy from remote tmux/vim (write only), background-tab activity (`•`) and bell (`!`) markers with a notification, 12 terminal themes, and tabs reopened on launch.
+- **Terminal comforts**: auto-reconnect with backoff when a connection drops (terminal, SFTP and Docker tabs; edits saved while offline upload once back), a per-host command to run after connect, a prompt before multi-line pastes (unless the shell uses bracketed paste), scrollback search, per-tab zoom, OSC 52 copy from remote tmux/vim (write only), a bell (`!`) marker with a notification for background tabs, 12 terminal themes, and tabs reopened on launch.
 - **Host keys**: trust-on-first-use with SHA256 fingerprints; a changed key blocks the connection until you approve it.
-- **SFTP**: local and remote panes, drag and drop (also from Explorer), recursive upload/download/delete, rename, new folder, cancellable transfer queue. Asks Replace / Keep both / Skip when a name is taken, type-to-filter, remembers the last folder per host, synced bookmarks per host, and "Open terminal here".
+- **SFTP**: local and remote panes, drag and drop (also from Explorer), recursive upload/download/delete, rename, new folder, cancellable transfer queue. Asks Replace / Keep both / Skip when a name is taken, type-to-filter, remembers the last folder per host, favorite folders and folder colors per host (synced; favorites show as a strip under the path and in Ctrl+Shift+P), and "Open terminal here".
 - **Keychain**: generate ed25519 / RSA / ECDSA keys, import OpenSSH, PEM and PuTTY keys, reusable identities (username + password/key).
 - **Docker** (over SSH): containers per host grouped by Compose project, CPU and memory, start / stop / restart, shell into a container or follow its logs in a terminal tab. Falls back to `sudo -n docker` when the user is not in the docker group.
 - **RDP hosts**: saved and synced with the rest of the vault; opens Windows Remote Desktop already signed in, optionally tunnelled through an SSH jump host.
@@ -65,7 +65,7 @@ src/preload    typed bridge exposed as window.api
 src/renderer   Svelte UI
 src/shared     types shared by both sides
 scripts        test server, release script, icon generator (pnpm icon)
-build          app icon: line art at 64px and up, pixel art below
+build          app icons generated from src/renderer/src/assets/chicken.svg (dark tile default, light tile for light taskbars)
 ```
 
 Set `BAWKTERM_DATA_DIR` to keep a separate vault while testing.

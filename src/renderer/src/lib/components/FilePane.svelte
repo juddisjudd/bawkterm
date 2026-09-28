@@ -7,6 +7,8 @@
   import FileIcon from '@lucide/svelte/icons/file'
   import FileSymlink from '@lucide/svelte/icons/file-symlink'
   import type { FileEntry } from '@shared/types'
+  import { FOLDER_COLORS } from '@shared/defaults'
+  import { favoriteLabels, tint, type FolderMarks } from '$lib/folders'
   import { app, type MenuItem } from '$lib/state.svelte'
   import { bytes, date, mode } from '$lib/format'
   import type { PathOps } from '$lib/paths'
@@ -32,7 +34,8 @@
     onedit,
     onterminal,
     tools,
-    overlay
+    overlay,
+    marks
   }: {
     side: Side
     title: string
@@ -52,6 +55,7 @@
     onterminal?: (path: string) => void
     tools?: Snippet
     overlay?: Snippet
+    marks?: FolderMarks
   } = $props()
 
   let entries = $state.raw<FileEntry[]>([])
@@ -87,6 +91,7 @@
   )
 
   const selectedEntries = $derived(visible.filter((e) => selected.includes(e.path)))
+  const favoriteNames = $derived(favoriteLabels(marks?.favorites ?? []))
 
   export async function refresh(): Promise<void> {
     if (disabled || path === undefined) return
@@ -187,6 +192,33 @@
     }
   }
 
+  function markItems(paths: string[]): MenuItem[] {
+    if (!marks) return []
+    const items: MenuItem[] = []
+    if (paths.length === 1) {
+      const on = marks.favorites.includes(paths[0])
+      items.push({ label: on ? 'Remove from favorites' : 'Add to favorites', action: () => marks.setFavorite(paths[0], !on) })
+    }
+    const colors = new Set(paths.map((p) => marks.colors[p] ?? null))
+    items.push({
+      swatches: FOLDER_COLORS,
+      current: colors.size === 1 ? [...colors][0] : null,
+      pick: (color) => marks.setColor(paths, color)
+    })
+    return items
+  }
+
+  function favoriteMenu(e: MouseEvent, fav: string): void {
+    if (!marks) return
+    app.openMenu(e, [
+      { label: 'Open', action: () => navigate(fav) },
+      ...(onterminal ? [{ label: 'Open terminal here', action: () => onterminal(fav) }] : []),
+      { label: 'Copy path', action: () => navigator.clipboard.writeText(fav) },
+      'sep',
+      ...markItems([fav])
+    ])
+  }
+
   function rowMenu(e: MouseEvent, entry: FileEntry, index: number): void {
     if (!selected.includes(entry.path)) select(e, entry, index)
     const targets = selected.includes(entry.path) ? selectedEntries : [entry]
@@ -201,6 +233,7 @@
     if (onopen && !isDirLike(entry) && targets.length === 1) {
       items.push({ label: 'Open with default app', action: () => onopen(entry) })
     }
+    if (marks && targets.every(isDirLike)) items.push('sep', ...markItems(targets.map((t) => t.path)), 'sep')
     items.push(
       { label: `${sendLabel} ${targets.length > 1 ? `${targets.length} items` : ''}`.trim(), action: () => onsend(targets) },
       'sep',
@@ -220,7 +253,8 @@
       ...(onterminal ? [{ label: 'Open terminal here', action: () => onterminal(path) }] : []),
       { label: 'New folder', action: mkdir },
       { label: 'Refresh', action: refresh },
-      { label: 'Copy path', action: () => navigator.clipboard.writeText(path) }
+      { label: 'Copy path', action: () => navigator.clipboard.writeText(path) },
+      ...(marks ? ['sep' as const, ...markItems([path])] : [])
     ])
   }
 
@@ -329,6 +363,24 @@
       </button>
       <button type="button" class="btn small icon ghost" aria-label="New folder" title="New folder" {disabled} onclick={mkdir}><FolderPlus /></button>
     </div>
+    {#if marks?.favorites.length}
+      <div class="favorites" role="toolbar" aria-label="favorites">
+        {#each marks.favorites as fav (fav)}
+          <button
+            type="button"
+            class={['fav', fav === path && 'here', marks.colors[fav] && 'tinted']}
+            style:--tint={tint(marks.colors[fav])}
+            title={fav}
+            {disabled}
+            onclick={() => navigate(fav)}
+            oncontextmenu={(e) => favoriteMenu(e, fav)}
+          >
+            <Folder size={12} class="icon" />
+            <span class="fav-name">{favoriteNames.get(fav)}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </header>
 
   <div class="cols" class:remote={side === 'remote'}>
@@ -368,7 +420,7 @@
         ondblclick={() => activate(entry)}
         oncontextmenu={(e) => rowMenu(e, entry, i)}
       >
-        <span class="name">
+        <span class={['name', isDirLike(entry) && marks?.colors[entry.path] && 'tinted']} style:--tint={isDirLike(entry) ? tint(marks?.colors[entry.path]) : undefined}>
           {#if isDirLike(entry)}<Folder size={14} class="icon dir" />{:else if entry.kind === 'link'}<FileSymlink size={14} class="icon" />{:else}<FileIcon size={14} class="icon" />{/if}
           <span class="text">{entry.name}</span>
         </span>
@@ -512,7 +564,7 @@
   }
   .list:focus-within .row.selected,
   .list:focus .row.selected {
-    box-shadow: inset 2px 0 0 var(--bg-interactive);
+    box-shadow: inset 2px 0 0 var(--focus);
   }
   .row .name {
     display: flex;
@@ -530,6 +582,54 @@
   }
   .row :global(.icon.dir) {
     color: var(--text);
+  }
+  .row .tinted :global(.icon.dir),
+  .fav.tinted :global(.icon) {
+    color: var(--tint);
+    fill: color-mix(in oklch, var(--tint) 30%, transparent);
+  }
+  .favorites {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .fav {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    max-width: 180px;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--border-weak);
+    border-radius: 3px;
+    background: none;
+    color: var(--text);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .fav:hover:not(:disabled) {
+    background: var(--bg-weak-hover);
+    color: var(--text-strong);
+  }
+  .fav.here {
+    border-color: var(--border);
+    background: var(--bg-selected);
+    color: var(--text-strong);
+  }
+  .fav:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .fav :global(.icon) {
+    flex: none;
+    color: var(--icon);
+  }
+  .fav-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .state {
     padding: 16px 10px;

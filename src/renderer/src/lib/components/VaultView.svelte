@@ -122,7 +122,7 @@
     margin: 0 4px;
   }
   .count {
-    color: var(--text-weaker);
+    color: var(--text-weak);
     font-size: 12px;
   }
   .content {

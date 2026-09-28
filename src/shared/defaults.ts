@@ -1,4 +1,4 @@
-import type { Host, Identity, LocalState, Settings, Snippet, SyncState, VaultData } from './types'
+import type { FolderColor, Host, Identity, LocalState, Settings, Snippet, SyncState, VaultData } from './types'
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
@@ -36,6 +36,8 @@ export function emptyVault(): VaultData {
   }
 }
 
+export const FOLDER_COLORS: FolderColor[] = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']
+
 export function blankHost(): Host {
   const now = Date.now()
   return {
@@ -56,6 +58,7 @@ export function blankHost(): Host {
     rdpFullscreen: true,
     startupCommand: '',
     bookmarks: [],
+    folderColors: {},
     createdAt: now,
     updatedAt: now
   }

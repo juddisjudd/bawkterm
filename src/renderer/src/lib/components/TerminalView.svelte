@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { Terminal } from '@xterm/xterm'
   import { FitAddon } from '@xterm/addon-fit'
   import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -12,18 +12,11 @@
   import X from '@lucide/svelte/icons/x'
   import { app, type Tab } from '$lib/state.svelte'
   import { onSessionData, registerTerminal } from '$lib/sessions'
-  import { terminalTheme } from '$lib/theme'
+  import { SEARCH_DECORATIONS, terminalIsDark, terminalTheme } from '$lib/theme'
   import { focusOnMount } from '$lib/focus'
   import { Reconnector } from '$lib/reconnect.svelte'
 
   let { tab, active }: { tab: Tab; active: boolean } = $props()
-
-  const SEARCH_DECORATIONS = {
-    matchBackground: '#4a4630',
-    matchOverviewRuler: '#8a7f2e',
-    activeMatchBackground: '#8a7f2e',
-    activeMatchColorOverviewRuler: '#fdffcc'
-  }
 
   let el = $state<HTMLDivElement>()
   let term: Terminal | undefined
@@ -42,6 +35,7 @@
   const ended = $derived(tab.status === 'closed' || tab.status === 'error')
   const hostId = $derived('hostId' in tab.target ? tab.target.hostId : '')
   const colors = $derived(terminalTheme(app.settings.terminalTheme, app.theme))
+  const decorations = $derived(SEARCH_DECORATIONS[terminalIsDark(app.settings.terminalTheme, app.theme) ? 'dark' : 'light'])
 
   function refit(): void {
     cancelAnimationFrame(fitFrame)
@@ -101,7 +95,7 @@
       results = { index: -1, count: 0 }
       return
     }
-    const options = { decorations: SEARCH_DECORATIONS, incremental }
+    const options = { decorations, incremental }
     if (forward) search.findNext(query, options)
     else search.findPrevious(query, options)
   }
@@ -114,7 +108,7 @@
 
   function notifyBell(): void {
     if (active && document.hasFocus()) return
-    app.mark(tab.id, 'bell')
+    app.ringBell(tab.id)
     if (!app.settings.bellNotify || document.hasFocus()) return
     const note = new Notification('bawkterm', { body: `${tab.title} rang the bell` })
     note.onclick = () => {
@@ -196,7 +190,6 @@
       search.onDidChangeResults(({ resultIndex, resultCount }) => (results = { index: resultIndex, count: resultCount }))
     ]
     const stopData = onSessionData(tab.id, (data) => {
-      if (!active) app.mark(tab.id, 'activity')
       t.write(data, () => window.api.ssh.ack(tab.id, data.length))
     })
     const unregister = registerTerminal(tab.id, {
@@ -242,6 +235,15 @@
   })
 
   $effect(() => {
+    void decorations
+    untrack(() => {
+      if (!searchOpen || !query) return
+      search?.clearDecorations()
+      find(true, true)
+    })
+  })
+
+  $effect(() => {
     const s = app.settings
     if (!term) return
     term.options.theme = colors
@@ -256,7 +258,7 @@
 
   $effect(() => {
     if (!active || !term) return
-    app.clearMarks(tab.id)
+    app.clearBell(tab.id)
     refit()
     term.focus()
   })

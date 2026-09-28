@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS } from '@shared/defaults'
 import type {
   EditInfo,
   ConnectTarget,
+  FolderColor,
   PromptChoice,
   PromptField,
   PromptRequest,
@@ -29,7 +30,6 @@ export interface Tab {
   message?: string
   command?: string
   dropped?: boolean
-  activity?: boolean
   bell?: boolean
 }
 
@@ -52,7 +52,10 @@ export interface Toast {
   message: string
 }
 
-export type MenuItem = { label: string; action: () => void; danger?: boolean; disabled?: boolean } | 'sep'
+export type MenuItem =
+  | { label: string; action: () => void; danger?: boolean; disabled?: boolean }
+  | { swatches: FolderColor[]; current: FolderColor | null; pick: (color: FolderColor | null) => void }
+  | 'sep'
 
 export interface Menu {
   x: number
@@ -111,6 +114,10 @@ class AppState {
       this.pendingLocal = null
       if (local) void api.session.save(local).catch(() => {})
     }, 800)
+  }
+
+  lastPath(key: string): string | undefined {
+    return (this.pendingLocal ?? this.vault?.local)?.lastPaths[key]
   }
 
   rememberPath(key: string, path: string): void {
@@ -241,17 +248,14 @@ class AppState {
     tab.dropped = e.dropped
   }
 
-  mark(id: string, kind: 'activity' | 'bell'): void {
+  ringBell(id: string): void {
     const tab = this.tabs.find((t) => t.id === id)
-    if (tab && !tab[kind]) tab[kind] = true
+    if (tab && !tab.bell) tab.bell = true
   }
 
-  clearMarks(id: string): void {
+  clearBell(id: string): void {
     const tab = this.tabs.find((t) => t.id === id)
-    if (tab && (tab.activity || tab.bell)) {
-      tab.activity = false
-      tab.bell = false
-    }
+    if (tab?.bell) tab.bell = false
   }
 
   updateEdit(info: EditInfo): void {

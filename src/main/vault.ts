@@ -95,6 +95,7 @@ function normalize(raw: Partial<VaultData>): VaultData {
       rdpFullscreen: h.rdpFullscreen ?? true,
       startupCommand: h.startupCommand ?? '',
       bookmarks: h.bookmarks ?? [],
+      folderColors: h.folderColors ?? {},
       tags: h.tags ?? []
     })),
     keys: (raw.keys ?? base.keys).map((k) => ({ ...k, updatedAt: k.updatedAt ?? k.createdAt })),

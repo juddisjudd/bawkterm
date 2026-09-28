@@ -104,6 +104,7 @@ function applyItem(d: VaultData, rkey: string, value: unknown): void {
         rdpFullscreen: incoming.rdpFullscreen ?? true,
         startupCommand: incoming.startupCommand ?? '',
         bookmarks: incoming.bookmarks ?? [],
+        folderColors: incoming.folderColors ?? {},
         tags: incoming.tags ?? [],
         lastUsedAt
       })

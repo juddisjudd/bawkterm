@@ -326,7 +326,7 @@
     white-space: nowrap;
   }
   .used {
-    color: var(--text-weaker);
+    color: var(--text-weak);
     font-size: 12px;
     text-align: right;
   }

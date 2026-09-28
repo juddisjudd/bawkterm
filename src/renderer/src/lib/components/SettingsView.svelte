@@ -4,7 +4,7 @@
   import PageHeader from './PageHeader.svelte'
   import Checkbox from './Checkbox.svelte'
   import SyncSettings from './SyncSettings.svelte'
-  import { TERMINAL_THEMES } from '$lib/theme'
+  import { TERMINAL_THEMES, terminalTheme } from '$lib/theme'
   import { enrollPasskey } from '$lib/passkey'
 
   const s = $derived(app.settings)
@@ -109,18 +109,19 @@
     <h2>terminal</h2>
     <div class="themes" role="radiogroup" aria-label="terminal theme">
       {#each TERMINAL_THEMES as t (t.id)}
+        {@const colors = terminalTheme(t.id, app.theme)}
         <button
           type="button"
           role="radio"
           aria-checked={s.terminalTheme === t.id}
           class={['theme', s.terminalTheme === t.id && 'active']}
-          style:background={t.colors.background}
-          style:color={t.colors.foreground}
+          style:background={colors.background}
+          style:color={colors.foreground}
           onclick={() => set('terminalTheme', t.id)}
         >
           <span class="theme-name">{t.label}</span>
           <span class="swatches">
-            {#each [t.colors.red, t.colors.green, t.colors.yellow, t.colors.blue, t.colors.magenta, t.colors.cyan] as c, i (i)}
+            {#each [colors.red, colors.green, colors.yellow, colors.blue, colors.magenta, colors.cyan] as c, i (i)}
               <span style:background={c}></span>
             {/each}
           </span>
@@ -357,7 +358,7 @@
     cursor: pointer;
   }
   .theme.active {
-    outline: 2px solid var(--bg-interactive);
+    outline: 2px solid var(--focus);
     outline-offset: 1px;
   }
   .theme-name {

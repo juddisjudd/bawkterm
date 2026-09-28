@@ -72,7 +72,7 @@
     z-index: 100;
     display: grid;
     place-items: center;
-    background: hsl(0 0% 0% / 0.45);
+    background: oklch(0 0 0 / 0.45);
   }
   .modal {
     display: flex;

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import Star from '@lucide/svelte/icons/star'
-  import type { FileEntry } from '@shared/types'
+  import type { FileEntry, FolderColor, Host } from '@shared/types'
+  import { remapFolders, type FolderMarks } from '$lib/folders'
   import { app, type Tab } from '$lib/state.svelte'
   import { localPath, remotePath } from '$lib/paths'
   import FilePane from './FilePane.svelte'
@@ -38,18 +39,55 @@
     app.openTab('ssh', $state.snapshot(tab.target), `${remoteTitle} · ${name}`, `cd ${quote(path)} && exec "\${SHELL:-/bin/sh}" -l`)
   }
 
-  async function toggleBookmark(): Promise<void> {
-    if (!host) return
-    const bookmarks = bookmarked ? host.bookmarks.filter((b) => b !== remote) : [...host.bookmarks, remote]
-    await api.hosts.save({ ...host, bookmarks }).catch((err) => app.fail(err))
+  let hostWrites = Promise.resolve()
+
+  // queued so quick successive edits each start from the previous save
+  function changeHost(change: (h: Host) => Partial<Host> | null): void {
+    const id = host?.id
+    if (!id) return
+    hostWrites = hostWrites
+      .then(async () => {
+        const latest = app.vault?.hosts.find((h) => h.id === id)
+        const patch = latest && change(latest)
+        if (latest && patch) await api.hosts.save({ ...latest, ...patch })
+      })
+      .catch((err) => app.fail(err))
   }
 
-  function bookmarkMenu(e: MouseEvent): void {
-    if (!host) return
-    app.openMenu(
-      e,
-      host.bookmarks.map((b) => ({ label: b, action: () => (remote = b) }))
-    )
+  function setFavorite(path: string, on: boolean): void {
+    changeHost((h) => {
+      if (h.bookmarks.includes(path) === on) return null
+      return { bookmarks: on ? [...h.bookmarks, path] : h.bookmarks.filter((b) => b !== path) }
+    })
+  }
+
+  function setColor(paths: string[], color: FolderColor | null): void {
+    changeHost((h) => {
+      const folderColors = { ...h.folderColors }
+      for (const p of paths) {
+        if (color) folderColors[p] = color
+        else delete folderColors[p]
+      }
+      return { folderColors }
+    })
+  }
+
+  const marks = $derived<FolderMarks | undefined>(
+    host && { favorites: host.bookmarks, colors: host.folderColors, setFavorite, setColor }
+  )
+
+  async function renameRemote(from: string, to: string): Promise<void> {
+    await api.sftp.rename(tab.id, from, to)
+    changeHost((h) => remapFolders(h, from, to))
+  }
+
+  async function removeRemote(entries: FileEntry[]): Promise<void> {
+    await api.sftp.remove(tab.id, entries.map((e) => e.path))
+    changeHost((h) => {
+      let next: Pick<Host, 'bookmarks' | 'folderColors'> | null = null
+      for (const e of entries) next = remapFolders(next ?? h, e.path, null) ?? next
+      return next
+    })
   }
 
   async function connect(): Promise<void> {
@@ -58,7 +96,7 @@
       const res = await api.sftp.open(tab.id, $state.snapshot(tab.target))
       remoteTitle = res.title
       if (!remote) {
-        const last = app.vault?.local.lastPaths[pathKey]
+        const last = app.lastPath(pathKey)
         remote = last ? await api.sftp.realpath(tab.id, last).catch(() => res.home) : res.home
       }
     } catch {
@@ -105,16 +143,13 @@
     <button
       type="button"
       class="btn small icon ghost"
-      aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this folder'}
-      title={bookmarked ? 'Remove bookmark' : 'Bookmark this folder'}
+      aria-label={bookmarked ? 'Remove from favorites' : 'Add this folder to favorites'}
+      title={bookmarked ? 'Remove from favorites' : 'Add this folder to favorites'}
       disabled={!connected}
-      onclick={toggleBookmark}
+      onclick={() => setFavorite(remote, !bookmarked)}
     >
       <Star size={14} fill={bookmarked ? 'currentColor' : 'none'} color={bookmarked ? 'var(--warning)' : 'currentColor'} />
     </button>
-    {#if host?.bookmarks.length}
-      <button type="button" class="btn small ghost" disabled={!connected} onclick={bookmarkMenu}>bookmarks</button>
-    {/if}
   {/snippet}
 
   {#snippet connectionState()}
@@ -175,11 +210,12 @@
       onsend={(entries: FileEntry[]) => download(entries.map((e) => e.path))}
       onreceive={(paths) => upload(paths)}
       onmkdir={(p) => api.sftp.mkdir(tab.id, p)}
-      onrename={(a, b) => api.sftp.rename(tab.id, a, b)}
-      onremove={(entries) => api.sftp.remove(tab.id, entries.map((e) => e.path))}
+      onrename={renameRemote}
+      onremove={removeRemote}
       onedit={(e) => api.sftp.edit(tab.id, e.path).catch((err) => app.fail(err))}
       onterminal={openTerminal}
       tools={host ? bookmarkTools : undefined}
+      {marks}
       overlay={connected ? undefined : connectionState}
     />
   </div>

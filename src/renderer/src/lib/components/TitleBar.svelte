@@ -44,10 +44,10 @@
         onauxclick={(e) => onauxclick(e, tab)}
         oncontextmenu={(e) => menu(e, tab)}
       >
-        <span class={['dot', tab.status]}></span>
         <span class="kind">{tab.kind}</span>
+        {#if tab.status !== 'connected'}<span class={['dot', tab.status]} title={tab.status}></span>{/if}
         <span class="title">{tab.title}</span>
-        {#if tab.bell}<span class="mark bell" title="bell">!</span>{:else if tab.activity}<span class="mark" title="new output">•</span>{/if}
+        {#if tab.bell}<span class="bell" title="bell">!</span>{/if}
         <button
           type="button"
           class="close"
@@ -116,19 +116,28 @@
     padding-right: 14px;
   }
   .kind {
-    color: var(--text-weaker);
-    font-size: 11px;
+    flex: none;
+    padding: 0 5px;
+    border: 1px solid var(--border-weak);
+    border-radius: 3px;
+    background: var(--bg-weak);
+    color: var(--text-weak);
+    font-size: 10px;
+    line-height: 16px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .tab.active .kind {
+    border-color: var(--border);
+    color: var(--text);
   }
   .title {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .mark {
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .mark.bell {
+  .bell {
     color: var(--warning);
+    font-weight: 600;
   }
   .close {
     display: grid;

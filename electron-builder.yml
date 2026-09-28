@@ -8,6 +8,11 @@ files:
   - package.json
 asar: true
 npmRebuild: false
+extraResources:
+  - from: build/icon.ico
+    to: icon.ico
+  - from: build/icon-light.ico
+    to: icon-light.ico
 win:
   icon: build/icon.ico
   target:

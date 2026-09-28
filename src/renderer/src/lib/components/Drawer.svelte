@@ -31,7 +31,7 @@
     position: fixed;
     inset: var(--titlebar) 0 0 0;
     z-index: 40;
-    background: hsl(0 0% 0% / 0.3);
+    background: oklch(0 0 0 / 0.3);
   }
   .drawer {
     position: fixed;

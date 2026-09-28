@@ -1,5 +1,7 @@
 export type HostKind = 'ssh' | 'rdp'
 
+export type FolderColor = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple'
+
 export interface Host {
   id: string
   kind: HostKind
@@ -20,6 +22,7 @@ export interface Host {
   rdpFullscreen: boolean
   startupCommand: string
   bookmarks: string[]
+  folderColors: Record<string, FolderColor>
   lastUsedAt?: number
 }
 

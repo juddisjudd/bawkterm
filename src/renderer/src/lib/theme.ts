@@ -7,56 +7,91 @@ export interface TerminalTheme {
   colors: ITheme
 }
 
+// xterm only accepts hex, so the bawk palettes are written in OKLCH and converted here
+function oklch(l: number, c: number, h: number): string {
+  const a = c * Math.cos((h * Math.PI) / 180)
+  const b = c * Math.sin((h * Math.PI) / 180)
+  const lc = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const mc = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const sc = (l - 0.0894841775 * a - 1.291485548 * b) ** 3
+  const linear = [
+    4.0767416621 * lc - 3.3077115913 * mc + 0.2309699292 * sc,
+    -1.2684380046 * lc + 2.6097574011 * mc - 0.3413193965 * sc,
+    -0.0041960863 * lc - 0.7034186147 * mc + 1.707614701 * sc
+  ]
+  const channel = (v: number): string => {
+    const x = Math.min(1, Math.max(0, v))
+    const srgb = x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055
+    return Math.round(srgb * 255).toString(16).padStart(2, '0')
+  }
+  return '#' + linear.map(channel).join('')
+}
+
 const bawk: Record<'dark' | 'light', ITheme> = {
   dark: {
-    background: '#141010',
-    foreground: '#e4dede',
-    cursor: '#f2eded',
-    cursorAccent: '#141010',
-    selectionBackground: '#fdffcc',
-    selectionForeground: '#141010',
-    selectionInactiveBackground: '#4a4a3c',
-    black: '#2a2525',
-    red: '#e06c75',
-    green: '#7fd88f',
-    yellow: '#f5a742',
-    blue: '#5c9cf5',
-    magenta: '#9d7cd8',
-    cyan: '#56b6c2',
-    white: '#b8b2b2',
-    brightBlack: '#6e6767',
-    brightRed: '#f08a92',
-    brightGreen: '#a2e8ad',
-    brightYellow: '#fab283',
-    brightBlue: '#86b6ff',
-    brightMagenta: '#b99cec',
-    brightCyan: '#80d2dc',
-    brightWhite: '#f2eded'
+    background: oklch(0.175, 0.006, 25),
+    foreground: oklch(0.92, 0.005, 25),
+    cursor: oklch(0.955, 0.005, 25),
+    cursorAccent: oklch(0.175, 0.006, 25),
+    selectionBackground: oklch(0.965, 0.09, 108),
+    selectionForeground: oklch(0.175, 0.006, 25),
+    selectionInactiveBackground: oklch(0.78, 0.07, 105),
+    black: oklch(0.3, 0.006, 25),
+    red: oklch(0.72, 0.16, 20),
+    green: oklch(0.8, 0.15, 150),
+    yellow: oklch(0.8, 0.14, 70),
+    blue: oklch(0.7, 0.13, 255),
+    magenta: oklch(0.7, 0.14, 300),
+    cyan: oklch(0.76, 0.1, 205),
+    white: oklch(0.8, 0.008, 25),
+    brightBlack: oklch(0.6, 0.008, 25),
+    brightRed: oklch(0.78, 0.12, 20),
+    brightGreen: oklch(0.87, 0.12, 150),
+    brightYellow: oklch(0.88, 0.12, 90),
+    brightBlue: oklch(0.78, 0.11, 255),
+    brightMagenta: oklch(0.78, 0.11, 300),
+    brightCyan: oklch(0.84, 0.09, 205),
+    brightWhite: oklch(0.955, 0.005, 25)
   },
   light: {
-    background: '#fdfcfc',
-    foreground: '#211e1e',
-    cursor: '#211e1e',
-    cursorAccent: '#fdfcfc',
-    selectionBackground: '#f5f7b8',
-    selectionForeground: '#211e1e',
-    selectionInactiveBackground: '#ecebd5',
-    black: '#211e1e',
-    red: '#c53b46',
-    green: '#2f8a3f',
-    yellow: '#a86a00',
-    blue: '#2c6bd6',
-    magenta: '#7a4fc0',
-    cyan: '#1f8795',
-    white: '#8a8585',
-    brightBlack: '#5c5757',
-    brightRed: '#d9535e',
-    brightGreen: '#3a9f4c',
-    brightYellow: '#c2621c',
-    brightBlue: '#4a84e8',
-    brightMagenta: '#9166d6',
-    brightCyan: '#2a9eae',
-    brightWhite: '#b3adad'
+    background: oklch(0.99, 0.002, 25),
+    foreground: oklch(0.24, 0.006, 25),
+    cursor: oklch(0.24, 0.006, 25),
+    cursorAccent: oklch(0.99, 0.002, 25),
+    selectionBackground: oklch(0.92, 0.11, 108),
+    selectionForeground: oklch(0.21, 0.006, 25),
+    selectionInactiveBackground: oklch(0.93, 0.04, 105),
+    black: oklch(0.24, 0.006, 25),
+    red: oklch(0.53, 0.19, 25),
+    green: oklch(0.5, 0.13, 150),
+    yellow: oklch(0.55, 0.12, 70),
+    blue: oklch(0.52, 0.15, 258),
+    magenta: oklch(0.5, 0.17, 300),
+    cyan: oklch(0.52, 0.09, 205),
+    white: oklch(0.55, 0.006, 25),
+    brightBlack: oklch(0.42, 0.006, 25),
+    brightRed: oklch(0.57, 0.19, 25),
+    brightGreen: oklch(0.54, 0.14, 150),
+    brightYellow: oklch(0.56, 0.13, 55),
+    brightBlue: oklch(0.55, 0.16, 258),
+    brightMagenta: oklch(0.56, 0.15, 300),
+    brightCyan: oklch(0.55, 0.09, 200),
+    brightWhite: oklch(0.66, 0.006, 25)
+  }
+}
+
+export const SEARCH_DECORATIONS = {
+  dark: {
+    matchBackground: oklch(0.34, 0.05, 105),
+    matchOverviewRuler: oklch(0.6, 0.1, 100),
+    activeMatchBackground: oklch(0.8, 0.13, 100),
+    activeMatchColorOverviewRuler: oklch(0.965, 0.09, 108)
+  },
+  light: {
+    matchBackground: oklch(0.93, 0.07, 105),
+    matchOverviewRuler: oklch(0.8, 0.12, 100),
+    activeMatchBackground: oklch(0.86, 0.13, 100),
+    activeMatchColorOverviewRuler: oklch(0.55, 0.13, 100)
   }
 }
 
@@ -272,6 +307,11 @@ export const TERMINAL_THEMES: TerminalTheme[] = [
       brightWhite: '#e0def4'
   } }
 ]
+
+export function terminalIsDark(id: string, appTheme: 'dark' | 'light'): boolean {
+  if (id === 'auto') return appTheme === 'dark'
+  return TERMINAL_THEMES.find((t) => t.id === id)?.dark ?? appTheme === 'dark'
+}
 
 export function terminalTheme(id: string, appTheme: 'dark' | 'light'): ITheme {
   if (id === 'auto') return bawk[appTheme]

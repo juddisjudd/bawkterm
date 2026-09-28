@@ -1,50 +1,66 @@
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: hsl(0 9% 7%);
-  --bg-weak: hsl(0 6% 10%);
-  --bg-weak-hover: hsl(0 6% 15%);
-  --bg-strong: hsl(0 15% 94%);
-  --bg-strong-hover: hsl(0 15% 97%);
-  --bg-interactive: hsl(62 100% 90%);
-  --bg-selected: hsl(60 14% 15%);
-  --text: hsl(0 4% 71%);
-  --text-weak: hsl(0 2% 49%);
-  --text-weaker: hsl(0 3% 28%);
-  --text-strong: hsl(0 15% 94%);
-  --text-inverted: hsl(0 9% 7%);
-  --border: hsl(0 3% 28%);
-  --border-weak: hsl(0 4% 18%);
-  --icon: hsl(10 3% 43%);
-  --danger: #e06c75;
-  --success: #7fd88f;
-  --warning: #f5a742;
-  --accent: #fab283;
-  --shadow: 0 16px 48px hsl(0 0% 0% / 0.5);
+  --bg: oklch(0.175 0.006 25);
+  --bg-weak: oklch(0.205 0.006 25);
+  --bg-weak-hover: oklch(0.245 0.007 25);
+  --bg-strong: oklch(0.95 0.005 25);
+  --bg-strong-hover: oklch(0.985 0.003 25);
+  --bg-interactive: oklch(0.965 0.09 108);
+  --bg-selected: oklch(0.29 0.035 105);
+  --text: oklch(0.8 0.008 25);
+  --text-weak: oklch(0.68 0.008 25);
+  --text-weaker: oklch(0.56 0.008 25);
+  --text-strong: oklch(0.955 0.005 25);
+  --text-inverted: oklch(0.175 0.006 25);
+  --text-on-interactive: oklch(0.175 0.006 25);
+  --border: oklch(0.52 0.008 25);
+  --border-weak: oklch(0.28 0.006 25);
+  --icon: oklch(0.64 0.01 30);
+  --focus: oklch(0.93 0.11 105);
+  --danger: oklch(0.72 0.16 20);
+  --success: oklch(0.8 0.15 150);
+  --warning: oklch(0.8 0.14 70);
+  --accent: oklch(0.82 0.1 55);
+  --folder-red: oklch(0.7 0.16 22);
+  --folder-orange: oklch(0.76 0.14 55);
+  --folder-yellow: oklch(0.86 0.14 95);
+  --folder-green: oklch(0.76 0.15 150);
+  --folder-blue: oklch(0.72 0.13 250);
+  --folder-purple: oklch(0.72 0.14 305);
+  --shadow: 0 16px 48px oklch(0 0 0 / 0.5);
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: hsl(0 20% 99%);
-  --bg-weak: hsl(0 8% 97%);
-  --bg-weak-hover: hsl(0 8% 94%);
-  --bg-strong: hsl(0 5% 12%);
-  --bg-strong-hover: hsl(0 5% 18%);
-  --bg-interactive: hsl(62 84% 88%);
-  --bg-selected: hsl(62 84% 90%);
-  --text: hsl(0 1% 39%);
-  --text-weak: hsl(0 1% 60%);
-  --text-weaker: hsl(30 2% 81%);
-  --text-strong: hsl(0 5% 12%);
-  --text-inverted: hsl(0 20% 99%);
-  --border: hsl(30 2% 81%);
-  --border-weak: hsla(0 100% 3% / 0.1);
-  --icon: hsl(0 1% 55%);
-  --danger: #c53b46;
-  --success: #2f8a3f;
-  --warning: #a86a00;
-  --accent: #c2621c;
-  --shadow: 0 16px 48px hsl(0 0% 0% / 0.12);
+  --bg: oklch(0.99 0.002 25);
+  --bg-weak: oklch(0.972 0.003 25);
+  --bg-weak-hover: oklch(0.945 0.004 25);
+  --bg-strong: oklch(0.23 0.006 25);
+  --bg-strong-hover: oklch(0.32 0.006 25);
+  --bg-interactive: oklch(0.92 0.11 108);
+  --bg-selected: oklch(0.94 0.07 105);
+  --text: oklch(0.36 0.006 25);
+  --text-weak: oklch(0.5 0.006 25);
+  --text-weaker: oklch(0.62 0.006 25);
+  --text-strong: oklch(0.21 0.006 25);
+  --text-inverted: oklch(0.99 0.002 25);
+  --text-on-interactive: oklch(0.21 0.006 25);
+  --border: oklch(0.64 0.006 25);
+  --border-weak: oklch(0.9 0.004 25);
+  --icon: oklch(0.55 0.008 25);
+  --focus: oklch(0.55 0.13 100);
+  --danger: oklch(0.53 0.19 25);
+  --success: oklch(0.5 0.13 150);
+  --warning: oklch(0.55 0.13 70);
+  --accent: oklch(0.55 0.14 50);
+  --folder-red: oklch(0.56 0.19 25);
+  --folder-orange: oklch(0.62 0.15 55);
+  --folder-yellow: oklch(0.6 0.125 88);
+  --folder-green: oklch(0.56 0.14 150);
+  --folder-blue: oklch(0.55 0.15 255);
+  --folder-purple: oklch(0.52 0.17 305);
+  --shadow: 0 16px 48px oklch(0 0 0 / 0.12);
 }
 
 :root {
@@ -81,7 +97,7 @@ body {
 
 ::selection {
   background: var(--bg-interactive);
-  color: var(--text-inverted);
+  color: var(--text-on-interactive);
 }
 
 h1,
@@ -224,7 +240,7 @@ button {
   width: 100%;
   height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--border-weak);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-weak);
   color: var(--text-strong);
@@ -262,7 +278,7 @@ button {
 .select:focus,
 .textarea:focus {
   outline: none;
-  border-color: var(--border);
+  border-color: var(--text-weak);
   background: var(--bg);
 }
 

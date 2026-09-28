@@ -1,168 +1,46 @@
-// Draws the bawkterm chicken and writes build/icon.{svg,png,ico}.
-// 64px and up: isometric line art. Below that the lines blur, so hand-placed pixel art is used instead.
+// Builds the app icons from src/renderer/src/assets/chicken.svg (one black path on transparent).
+// Writes build/icon.{svg,png,ico} (white rooster on a dark tile, the exe default) and
+// build/icon-light.{png,ico} (black rooster on a light tile, swapped in at runtime in light mode).
 // Usage: pnpm icon [previewDir]
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Resvg } from '@resvg/resvg-js'
 
-const BG = '#141010'
-const EDGE = '#f2eded'
-const SHADE = { top: '#2b2424', left: '#141010', right: '#1d1818' }
-const PIXEL = { '#': EDGE, '+': '#8f8787', o: BG }
-const VIEW = 64
-const ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
+const root = join(import.meta.dirname, '..')
+const source = readFileSync(join(root, 'src/renderer/src/assets/chicken.svg'), 'utf8')
+const path = source.match(/<path[^>]*\sd="([^"]+)"/)?.[1]
+if (!path) throw new Error('chicken.svg must contain one <path d="…">')
 
-// u: toward the chicken's front (screen lower-left), v: its right side (screen lower-right), z: up
-const box = (u0, u1, v0, v1, z0, z1) => ({ kind: 'box', u: [u0, u1], v: [v0, v1], z: [z0, z1] })
-// side profile in (u, z), counter-clockwise, extruded across v
-const prism = (profile, v0, v1) => ({ kind: 'prism', profile, v: [v0, v1] })
-
-const chicken = [
-  box(1.5, 1.85, 0.6, 0.95, 0, 1.5),
-  box(1.5, 2.5, 0.6, 0.95, 0, 0.3),
-  box(1.5, 1.85, 1.55, 1.9, 0, 1.5),
-  box(1.5, 2.5, 1.55, 1.9, 0, 0.3),
-  prism([[0.7, 1.4], [2.7, 1.4], [3.4, 2.2], [3.4, 3.7], [1.4, 3.7], [0.5, 5.1], [-0.5, 4.8], [-0.4, 2.6]], 0, 2.5),
-  box(0.9, 2.6, 2.5, 2.9, 2.1, 3.25),
-  box(2.2, 3.7, 0.45, 2.05, 3.7, 5.4),
-  box(2.25, 2.6, 1.0, 1.5, 5.4, 5.95),
-  box(2.6, 3.05, 1.0, 1.5, 5.4, 6.35),
-  box(3.05, 3.5, 1.0, 1.5, 5.4, 6.05),
-  box(3.7, 3.95, 1.05, 1.45, 3.75, 4.3),
-  prism([[3.7, 4.3], [4.75, 4.62], [3.7, 4.95]], 0.95, 1.55)
-]
-const EYE = { u: 3.2, v: 2.05, z: 4.85, size: 1.1 }
-
-const SPRITES = {
-  16: [
-    '................',
-    '....#.#.........',
-    '...#####....#...',
-    '...#####...##...',
-    '...#o###..###...',
-    '.#######.####...',
-    '..###########...',
-    '...##########...',
-    '...###++++###...',
-    '...####++####...',
-    '....#########...',
-    '.....#######....',
-    '......#..#......',
-    '.....##.##......',
-    '................',
-    '................'
-  ],
-  24: [
-    '........................',
-    '........................',
-    '.......##...............',
-    '.....#.##.#.............',
-    '.....######.......#.....',
-    '....########.....###....',
-    '....########....####....',
-    '....#o######...#####....',
-    '..###o######..######....',
-    '.####################...',
-    '...##################...',
-    '....#################...',
-    '....#################...',
-    '....#####+++++++#####...',
-    '....######+++++######...',
-    '.....###############....',
-    '......#############.....',
-    '........#########.......',
-    '.........#...#..........',
-    '.........#...#..........',
-    '........##..##..........',
-    '........................',
-    '........................',
-    '........................'
-  ]
-}
-// size: [sprite grid, padding in px, pixels per cell]
-const SPRITE_FOR = { 16: [16, 0, 1], 20: [16, 2, 1], 24: [24, 0, 1], 32: [24, 4, 1], 40: [16, 4, 2], 48: [24, 0, 2] }
-
-const C = Math.cos(Math.PI / 6)
-const project = (u, v, z) => [(v - u) * C, (u + v) * 0.5 - z]
-
-function faces(part) {
-  const [v0, v1] = part.v
-  if (part.kind === 'prism') {
-    const p = part.profile
-    const sides = p
-      .map((a, i) => {
-        const b = p[(i + 1) % p.length]
-        const [nu, nz] = [b[1] - a[1], a[0] - b[0]]
-        if (nu + nz <= 1e-9) return null
-        return {
-          depth: (a[0] + b[0] + a[1] + b[1]) / 2,
-          shade: nz > nu ? 'top' : 'left',
-          pts: [[a[0], v0, a[1]], [b[0], v0, b[1]], [b[0], v1, b[1]], [a[0], v1, a[1]]]
-        }
-      })
-      .filter(Boolean)
-      .sort((x, y) => x.depth - y.depth)
-    return [...sides, { shade: 'right', pts: p.map(([u, z]) => [u, v1, z]) }]
-  }
-  const [u0, u1] = part.u
-  const [z0, z1] = part.z
-  return [
-    { shade: 'top', pts: [[u0, v0, z1], [u1, v0, z1], [u1, v1, z1], [u0, v1, z1]] },
-    { shade: 'left', pts: [[u1, v0, z0], [u1, v1, z0], [u1, v1, z1], [u1, v0, z1]] },
-    { shade: 'right', pts: [[u0, v1, z0], [u1, v1, z0], [u1, v1, z1], [u0, v1, z1]] }
-  ]
+const VIEW = 512
+const SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
+const VARIANTS = {
+  dark: { tile: '#141010', border: '#2e2727', ink: '#f2eded' },
+  light: { tile: '#fdfcfc', border: '#dcd6d6', ink: '#141010' }
 }
 
-function layout(fill) {
-  const all = chicken.flatMap(faces).flatMap((f) => f.pts.map((p) => project(...p)))
-  const xs = all.map((p) => p[0])
-  const ys = all.map((p) => p[1])
-  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
-  const scale = (VIEW * fill) / Math.max(maxX - minX, maxY - minY)
-  const ox = (VIEW - (maxX - minX) * scale) / 2 - minX * scale
-  const oy = (VIEW - (maxY - minY) * scale) / 2 - minY * scale
-  return (u, v, z) => {
-    const [x, y] = project(u, v, z)
-    return [+(x * scale + ox).toFixed(2), +(y * scale + oy).toFixed(2)]
-  }
-}
+const box = new Resvg(source).getBBox()
 
-function lineArt(pixels) {
-  const at = layout(0.72)
-  const px = (n) => +(n * (VIEW / pixels)).toFixed(3)
-  const edge = px(Math.max(1.6, pixels * 0.017))
-  const polygons = chicken
-    .flatMap(faces)
-    .map((f) => `<polygon points="${f.pts.map((q) => at(...q).join(',')).join(' ')}" fill="${SHADE[f.shade]}"/>`)
-    .join('')
-  const [ex, ey] = at(EYE.u, EYE.v, EYE.z)
+function svg(pixels, variant) {
+  const { tile, border, ink } = VARIANTS[variant]
+  // small sizes get less padding and a hairline stroke so the outline survives downscaling
+  const fill = pixels <= 24 ? 0.84 : pixels <= 48 ? 0.8 : 0.74
+  const scale = (VIEW * fill) / Math.max(box.width, box.height)
+  const tx = (VIEW - box.width * scale) / 2 - box.x * scale
+  const ty = (VIEW - box.height * scale) / 2 - box.y * scale
+  const unitsPerPixel = VIEW / pixels / scale
+  const thicken = pixels <= 32 ? 0.35 * unitsPerPixel : 0
+  const radius = pixels <= 32 ? VIEW * 0.2 : VIEW * 0.22
+  const edge = pixels <= 32 ? 0 : Math.max(1, VIEW / pixels)
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEW} ${VIEW}" width="${pixels}" height="${pixels}">`,
-    `<rect x="0.5" y="0.5" width="${VIEW - 1}" height="${VIEW - 1}" rx="14" fill="${BG}" stroke="#2e2727" stroke-width="${px(1)}"/>`,
-    `<g stroke="${EDGE}" stroke-width="${edge}" stroke-linejoin="round" stroke-linecap="round">${polygons}</g>`,
-    `<rect x="${ex - EYE.size / 2}" y="${ey - EYE.size / 2}" width="${EYE.size}" height="${EYE.size}" fill="${EDGE}"/>`,
+    `<rect x="${edge / 2}" y="${edge / 2}" width="${VIEW - edge}" height="${VIEW - edge}" rx="${radius}" fill="${tile}"${edge ? ` stroke="${border}" stroke-width="${edge}"` : ''}/>`,
+    `<path transform="translate(${tx.toFixed(2)} ${ty.toFixed(2)}) scale(${scale.toFixed(5)})" d="${path}" fill="${ink}"${thicken ? ` stroke="${ink}" stroke-width="${thicken.toFixed(2)}" stroke-linejoin="round"` : ''}/>`,
     '</svg>'
   ].join('')
 }
 
-function pixelArt(pixels) {
-  const [grid, pad, k] = SPRITE_FOR[pixels]
-  const rows = SPRITES[grid]
-  const cells = rows.flatMap((row, y) =>
-    [...row].map((ch, x) => (PIXEL[ch] ? `<rect x="${pad + x * k}" y="${pad + y * k}" width="${k}" height="${k}" fill="${PIXEL[ch]}"/>` : ''))
-  )
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${pixels} ${pixels}" width="${pixels}" height="${pixels}">`,
-    `<rect width="${pixels}" height="${pixels}" rx="${pixels * 0.2}" fill="${BG}"/>`,
-    `<g shape-rendering="crispEdges">${cells.join('')}</g>`,
-    '</svg>'
-  ].join('')
-}
-
-const svg = (pixels) => (SPRITE_FOR[pixels] ? pixelArt(pixels) : lineArt(pixels))
-
-function png(pixels) {
-  return new Resvg(svg(pixels), { fitTo: { mode: 'width', value: pixels } }).render().asPng()
+function png(pixels, variant) {
+  return new Resvg(svg(pixels, variant), { fitTo: { mode: 'width', value: pixels } }).render().asPng()
 }
 
 function ico(images) {
@@ -184,16 +62,17 @@ function ico(images) {
   return Buffer.concat([header, ...images.map((img) => img.data)])
 }
 
-const out = join(import.meta.dirname, '..', 'build')
-mkdirSync(out, { recursive: true })
-writeFileSync(join(out, 'icon.svg'), lineArt(512))
-writeFileSync(join(out, 'icon.png'), png(512))
-const images = ICO_SIZES.map((size) => ({ size, data: png(size) }))
-writeFileSync(join(out, 'icon.ico'), ico(images))
-
+const out = join(root, 'build')
 const preview = process.argv[2]
-if (preview) {
-  mkdirSync(preview, { recursive: true })
-  for (const { size, data } of images) writeFileSync(join(preview, `icon-${size}.png`), data)
+mkdirSync(out, { recursive: true })
+if (preview) mkdirSync(preview, { recursive: true })
+
+for (const variant of ['dark', 'light']) {
+  const name = variant === 'dark' ? 'icon' : 'icon-light'
+  if (variant === 'dark') writeFileSync(join(out, 'icon.svg'), svg(512, variant))
+  writeFileSync(join(out, `${name}.png`), png(512, variant))
+  const images = SIZES.map((size) => ({ size, data: png(size, variant) }))
+  writeFileSync(join(out, `${name}.ico`), ico(images))
+  if (preview) for (const { size, data } of images) writeFileSync(join(preview, `${name}-${size}.png`), data)
 }
-console.log(`wrote build/icon.svg, build/icon.png and build/icon.ico (${ICO_SIZES.join(', ')} px)`)
+console.log(`wrote build/icon.{svg,png,ico} and build/icon-light.{png,ico} (${SIZES.join(', ')} px)`)
