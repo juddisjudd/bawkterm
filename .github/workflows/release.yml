@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
 
@@ -48,10 +50,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          git log --no-merges --pretty='- %s' "${prev:+$prev..}$GITHUB_REF_NAME" | grep -v '^- chore(release):' > notes.md || true
+          if [ -n "$prev" ]; then
+            printf '\n**Full changelog**: %s/%s/compare/%s...%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME" >> notes.md
+          fi
           gh release create "$GITHUB_REF_NAME" \
             dist/*-setup.exe dist/*-setup.exe.blockmap dist/latest.yml \
             --title "bawkterm $GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file notes.md \
             --verify-tag
 
       - name: Keep installer from manual run

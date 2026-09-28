@@ -57,7 +57,8 @@ src/main       vault, SSH/SFTP sessions, IPC (Node side)
 src/preload    typed bridge exposed as window.api
 src/renderer   Svelte UI
 src/shared     types shared by both sides
-scripts        local test server
+scripts        test server, release script, icon generator (pnpm icon)
+build          app icon: line art at 64px and up, pixel art below
 ```
 
 Set `BAWKTERM_DATA_DIR` to keep a separate vault while testing.

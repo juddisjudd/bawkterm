@@ -19,7 +19,8 @@
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "dist": "electron-vite build && electron-builder --win --publish never",
     "test-server": "node scripts/test-server.cjs",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "icon": "node scripts/icon.mjs"
   },
   "dependencies": {
     "ssh2": "1.17.0"
@@ -28,6 +29,7 @@
     "@electron-toolkit/tsconfig": "2.0.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@lucide/svelte": "1.48.0",
+    "@resvg/resvg-js": "2.6.2",
     "@sveltejs/vite-plugin-svelte": "6.2.4",
     "@tsconfig/svelte": "5.0.8",
     "@types/node": "24.19.0",

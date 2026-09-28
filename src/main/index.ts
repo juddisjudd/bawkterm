@@ -16,6 +16,7 @@ function createWindow(vault: Vault): BrowserWindow {
     show: false,
     backgroundColor: '#141010',
     title: 'bawkterm',
+    icon: app.isPackaged ? undefined : join(app.getAppPath(), 'build/icon.ico'),
     titleBarStyle: 'hidden',
     titleBarOverlay:
       process.platform === 'darwin' ? true : { color: '#141010', symbolColor: '#b8b2b2', height: TITLEBAR_HEIGHT },
