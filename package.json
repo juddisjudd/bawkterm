@@ -1,6 +1,6 @@
 {
   "name": "bawkterm",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Personal SSH, SFTP and keychain client",
   "main": "./out/main/index.js",
   "author": "CKH",
