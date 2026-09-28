@@ -28,6 +28,8 @@
         return 'cancelled'
       case 'error':
         return 'failed'
+      case 'skipped':
+        return 'skipped (already there)'
     }
   }
 </script>
@@ -136,7 +138,8 @@
   li.error .bar {
     color: var(--danger);
   }
-  li.cancelled {
+  li.cancelled,
+  li.skipped {
     opacity: 0.6;
   }
 </style>

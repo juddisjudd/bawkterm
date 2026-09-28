@@ -55,6 +55,7 @@ function createWindow(vault: Vault): BrowserWindow {
   win.on('closed', () => {
     services?.terminals.closeAll()
     services?.sftp.closeAll()
+    services?.docker.closeAll()
   })
   return win
 }

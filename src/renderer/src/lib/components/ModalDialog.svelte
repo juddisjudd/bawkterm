@@ -9,9 +9,9 @@
   let values = $state<Record<string, string>>(Object.fromEntries(modal.fields.map((f) => [f.name, f.value ?? ''])))
   let checked = $state(false)
 
-  function close(ok: boolean): void {
+  function close(ok: boolean, choice?: string): void {
     const { id, resolve } = modal
-    resolve(ok ? { values: $state.snapshot(values), checked } : null)
+    resolve(ok ? { values: $state.snapshot(values), checked, choice } : null)
     app.dropModal(id)
   }
 </script>
@@ -47,9 +47,20 @@
     {/if}
     <div class="actions">
       <button type="button" class="btn ghost" onclick={() => close(false)}>Cancel</button>
-      <button type="submit" class={['btn', 'strong', modal.danger && 'danger']} {@attach focusOnMount(!modal.fields.length)}>
-        {modal.confirmLabel}
-      </button>
+      {#if modal.choices}
+        {#each modal.choices as c, i (c.id)}
+          <button
+            type="button"
+            class={['btn', i === 0 && 'strong', c.danger && 'danger']}
+            onclick={() => close(true, c.id)}
+            {@attach focusOnMount(i === 0)}>{c.label}</button
+          >
+        {/each}
+      {:else}
+        <button type="submit" class={['btn', 'strong', modal.danger && 'danger']} {@attach focusOnMount(!modal.fields.length)}>
+          {modal.confirmLabel}
+        </button>
+      {/if}
     </div>
   </form>
 </div>

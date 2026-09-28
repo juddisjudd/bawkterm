@@ -139,9 +139,68 @@ function startSftp(sftp) {
   sftp.on('FSETSTAT', (reqid) => sftp.status(reqid, STATUS_CODE.OK))
 }
 
-function startShell(stream, user) {
-  const prompt = () => stream.write(`\x1b[32m${user}@bawk-test\x1b[0m:\x1b[34m~\x1b[0m$ `)
-  stream.write(`Welcome to the bawkterm test server.\r\nCommands: help, ls, colors, flood, whoami, date, exit\r\n`)
+const containers = [
+  { ID: 'a1'.repeat(32), Names: 'blog-web-1', Image: 'nginx:1.27', State: 'running', Status: 'Up 3 hours', Ports: '0.0.0.0:8080->80/tcp, :::8080->80/tcp', Labels: 'com.docker.compose.project=blog,com.docker.compose.service=web' },
+  { ID: 'b2'.repeat(32), Names: 'blog-db-1', Image: 'postgres:16', State: 'running', Status: 'Up 3 hours', Ports: '5432/tcp', Labels: 'com.docker.compose.project=blog,com.docker.compose.service=db' },
+  { ID: 'c3'.repeat(32), Names: 'backup-job', Image: 'alpine:3.20', State: 'exited', Status: 'Exited (0) 2 days ago', Ports: '', Labels: '' }
+]
+
+// Fake docker CLI so bawkterm's Docker tab can be tried without Docker.
+function startExec(command, stream, user) {
+  const done = (code = 0) => {
+    stream.exit(code)
+    stream.end()
+  }
+  const cmd = command.replace(/^sudo -n /, '')
+  const cd = cmd.match(/^cd '((?:[^']|'\\'')*)' && exec /)
+  if (cd) return startShell(stream, user, 'bawk-test', cd[1].replace(/'\\''/g, "'"))
+  if (!cmd.startsWith('docker ')) {
+    stream.stderr.write(`${cmd.split(' ')[0]}: command not found\n`)
+    return done(127)
+  }
+  const find = (id) => containers.find((c) => c.ID === id)
+  let m
+  if (cmd.startsWith('docker version')) {
+    stream.write('27.3.1\n')
+    return done()
+  }
+  if (cmd.startsWith('docker ps')) {
+    stream.write(containers.map((c) => JSON.stringify(c)).join('\n') + '\n')
+    return done()
+  }
+  if (cmd.startsWith('docker stats')) {
+    const running = containers.filter((c) => c.State === 'running')
+    stream.write(running.map((c, i) => JSON.stringify({ ID: c.ID, CPUPerc: `${(i + 1) * 0.37}%`, MemUsage: `${40 + i * 88}MiB / 1.9GiB` })).join('\n') + '\n')
+    return done()
+  }
+  if ((m = cmd.match(/^docker (start|stop|restart) ([a-f0-9]+)$/))) {
+    const c = find(m[2])
+    if (!c) {
+      stream.stderr.write('Error: No such container\n')
+      return done(1)
+    }
+    c.State = m[1] === 'stop' ? 'exited' : 'running'
+    c.Status = m[1] === 'stop' ? 'Exited (0) 1 second ago' : 'Up 1 second'
+    stream.write(c.ID + '\n')
+    return done()
+  }
+  if ((m = cmd.match(/^docker logs -f --tail \d+ ([a-f0-9]+)$/))) {
+    const c = find(m[1])
+    let n = 0
+    const timer = setInterval(() => stream.write(`${new Date().toISOString()} ${c ? c.Names : '?'} request ${++n} 200 OK\r\n`), 400)
+    stream.on('close', () => clearInterval(timer))
+    return
+  }
+  if ((m = cmd.match(/^docker exec -it -e TERM=\S+ ([a-f0-9]+) sh -c/))) {
+    return startShell(stream, 'root', find(m[1])?.Names ?? 'container')
+  }
+  stream.stderr.write(`unsupported: ${cmd}\n`)
+  done(1)
+}
+
+function startShell(stream, user, hostname = 'bawk-test', cwd = '~') {
+  const prompt = () => stream.write(`\x1b[32m${user}@${hostname}\x1b[0m:\x1b[34m${cwd}\x1b[0m$ `)
+  stream.write(`Welcome to the bawkterm test server.\r\nCommands: help, ls, colors, flood, bell, drop, whoami, date, exit\r\n`)
   prompt()
   let line = ''
   const run = (cmd) => {
@@ -150,7 +209,7 @@ function startShell(stream, user) {
       case '':
         break
       case 'help':
-        stream.write('help ls colors flood whoami date echo exit\r\n')
+        stream.write('help ls colors flood bell bell-later drop whoami date echo exit\r\n')
         break
       case 'ls':
         stream.write(fs.readdirSync(ROOT).join('  ') + '\r\n')
@@ -171,6 +230,16 @@ function startShell(stream, user) {
       case 'flood':
         for (let i = 0; i < 20000; i++) stream.write(`line ${i} ${'x'.repeat(60)}\r\n`)
         break
+      case 'bell':
+        stream.write('\x07ding\r\n')
+        break
+      case 'bell-later':
+        setTimeout(() => stream.write('\x07ding (delayed)\r\n'), 2500)
+        break
+      case 'drop':
+        // simulates a dead network: channel goes away without an exit status
+        stream.destroy()
+        return
       case 'exit':
         stream.write('logout\r\n')
         stream.exit(0)
@@ -235,6 +304,7 @@ new Server({ hostKeys: [fs.readFileSync(KEY_FILE)] }, (client) => {
         session.on('env', (ok) => ok && ok())
         session.on('shell', (ok) => startShell(ok(), user))
         session.on('sftp', (ok) => startSftp(ok()))
+        session.on('exec', (ok, _reject, info) => startExec(info.command, ok(), user))
       })
     })
     .on('error', (err) => console.log('[test-server] client error:', err.message))

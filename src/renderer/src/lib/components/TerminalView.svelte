@@ -5,20 +5,43 @@
   import { WebLinksAddon } from '@xterm/addon-web-links'
   import { Unicode11Addon } from '@xterm/addon-unicode11'
   import { WebglAddon } from '@xterm/addon-webgl'
+  import { SearchAddon } from '@xterm/addon-search'
+  import { ClipboardAddon } from '@xterm/addon-clipboard'
+  import ChevronUp from '@lucide/svelte/icons/chevron-up'
+  import ChevronDown from '@lucide/svelte/icons/chevron-down'
+  import X from '@lucide/svelte/icons/x'
   import { app, type Tab } from '$lib/state.svelte'
   import { onSessionData, registerTerminal } from '$lib/sessions'
-  import { terminalThemes } from '$lib/theme'
+  import { terminalTheme } from '$lib/theme'
+  import { focusOnMount } from '$lib/focus'
+  import { Reconnector } from '$lib/reconnect.svelte'
 
   let { tab, active }: { tab: Tab; active: boolean } = $props()
+
+  const SEARCH_DECORATIONS = {
+    matchBackground: '#4a4630',
+    matchOverviewRuler: '#8a7f2e',
+    activeMatchBackground: '#8a7f2e',
+    activeMatchColorOverviewRuler: '#fdffcc'
+  }
 
   let el = $state<HTMLDivElement>()
   let term: Terminal | undefined
   let fit: FitAddon | undefined
+  let search: SearchAddon | undefined
   let fitFrame = 0
+
+  let zoom = $state(0)
+  let searchOpen = $state(false)
+  let query = $state('')
+  let results = $state({ index: -1, count: 0 })
+  const reconnect = new Reconnector(() => connect())
+  const retry = $derived(reconnect.state)
 
   const live = $derived(tab.status === 'connected')
   const ended = $derived(tab.status === 'closed' || tab.status === 'error')
   const hostId = $derived('hostId' in tab.target ? tab.target.hostId : '')
+  const colors = $derived(terminalTheme(app.settings.terminalTheme, app.theme))
 
   function refit(): void {
     cancelAnimationFrame(fitFrame)
@@ -31,19 +54,73 @@
   function connect(): void {
     if (!term) return
     app.updateTab({ sessionId: tab.id, status: 'connecting' })
-    window.api.ssh.open(tab.id, $state.snapshot(tab.target), term.cols, term.rows).catch(() => {})
+    window.api.ssh.open(tab.id, $state.snapshot(tab.target), term.cols, term.rows, tab.command).catch(() => {})
   }
 
-  async function paste(): Promise<void> {
-    const text = await navigator.clipboard.readText()
-    if (text && live) term?.paste(text)
+  function reconnectNow(): void {
+    reconnect.now()
   }
 
   function copySelection(): boolean {
     const text = term?.getSelection()
     if (!text) return false
-    void navigator.clipboard.writeText(text)
+    window.api.app.copy(text)
     return true
+  }
+
+  async function guardedPaste(text: string): Promise<void> {
+    if (!text || !live || !term) return
+    const lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n')
+    const risky = /[\r\n]/.test(text) && !term.modes.bracketedPasteMode
+    if (risky && app.settings.pasteProtection) {
+      const preview = lines.slice(0, 8).join('\n') + (lines.length > 8 ? `\n… ${lines.length - 8} more lines` : '')
+      const ok = await app.ask({
+        title: 'Paste multiple lines?',
+        message: `This paste has ${lines.length} line${lines.length > 1 ? 's' : ''} and the shell may run ${lines.length > 1 ? 'them' : 'it'} immediately.`,
+        detail: preview,
+        fields: [],
+        confirmLabel: 'Paste'
+      })
+      if (!ok) {
+        term.focus()
+        return
+      }
+    }
+    term.paste(text)
+    term.focus()
+  }
+
+  async function pasteClipboard(): Promise<void> {
+    await guardedPaste(await navigator.clipboard.readText())
+  }
+
+  function find(forward = true, incremental = false): void {
+    if (!search) return
+    if (!query) {
+      search.clearDecorations()
+      results = { index: -1, count: 0 }
+      return
+    }
+    const options = { decorations: SEARCH_DECORATIONS, incremental }
+    if (forward) search.findNext(query, options)
+    else search.findPrevious(query, options)
+  }
+
+  function closeSearch(): void {
+    searchOpen = false
+    search?.clearDecorations()
+    term?.focus()
+  }
+
+  function notifyBell(): void {
+    if (active && document.hasFocus()) return
+    app.mark(tab.id, 'bell')
+    if (!app.settings.bellNotify || document.hasFocus()) return
+    const note = new Notification('bawkterm', { body: `${tab.title} rang the bell` })
+    note.onclick = () => {
+      window.api.win.focus()
+      app.active = tab.id
+    }
   }
 
   onMount(() => {
@@ -55,7 +132,7 @@
       cursorStyle: s.cursorStyle,
       cursorBlink: s.cursorBlink,
       scrollback: s.scrollback,
-      theme: terminalThemes[app.theme],
+      theme: colors,
       allowProposedApi: true,
       macOptionIsMeta: true,
       rightClickSelectsWord: false,
@@ -63,10 +140,16 @@
     })
     term = t
     fit = new FitAddon()
+    search = new SearchAddon()
     t.loadAddon(fit)
+    t.loadAddon(search)
     t.loadAddon(new WebLinksAddon((_e, uri) => window.api.app.openExternal(uri)))
     t.loadAddon(new Unicode11Addon())
     t.unicode.activeVersion = '11'
+    if (s.osc52) {
+      // remote programs may set the local clipboard, never read it
+      t.loadAddon(new ClipboardAddon(undefined, { readText: () => '', writeText: (_sel, text) => window.api.app.copy(text) }))
+    }
     t.open(el!)
     try {
       const webgl = new WebglAddon()
@@ -85,11 +168,19 @@
         return false
       }
       if (e.ctrlKey && e.shiftKey && key === 'v') {
-        void paste()
+        // the browser still fires a paste event for this, handled by onPaste
         return false
       }
-      if (ended && (key === 'r' || key === 'enter') && !e.ctrlKey && !e.altKey) {
-        connect()
+      if (e.ctrlKey && e.shiftKey && key === 'f') {
+        searchOpen = true
+        return false
+      }
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && (key === '=' || key === '+' || key === '-' || key === '0')) {
+        zoom = key === '0' ? 0 : Math.max(-6, Math.min(16, zoom + (key === '-' ? -1 : 1)))
+        return false
+      }
+      if (ended && !e.ctrlKey && !e.altKey && (key === 'r' || key === 'enter')) {
+        reconnectNow()
         return false
       }
       return true
@@ -100,14 +191,16 @@
       t.onResize(({ cols, rows }) => window.api.ssh.resize(tab.id, cols, rows)),
       t.onSelectionChange(() => {
         if (app.settings.copyOnSelect) copySelection()
-      })
+      }),
+      t.onBell(notifyBell),
+      search.onDidChangeResults(({ resultIndex, resultCount }) => (results = { index: resultIndex, count: resultCount }))
     ]
-    const stopData = onSessionData(tab.id, (data) => t.write(data, () => window.api.ssh.ack(tab.id, data.length)))
+    const stopData = onSessionData(tab.id, (data) => {
+      if (!active) app.mark(tab.id, 'activity')
+      t.write(data, () => window.api.ssh.ack(tab.id, data.length))
+    })
     const unregister = registerTerminal(tab.id, {
-      paste: (text) => {
-        if (live) t.paste(text)
-        t.focus()
-      },
+      paste: (text) => void guardedPaste(text),
       run: (text) => {
         if (!live) return
         t.paste(text)
@@ -121,16 +214,24 @@
     const onContextMenu = (e: MouseEvent): void => {
       if (!app.settings.rightClickPaste) return
       e.preventDefault()
-      if (!copySelection()) void paste()
-      else t.clearSelection()
+      if (copySelection()) t.clearSelection()
+      else void pasteClipboard()
+    }
+    const onPaste = (e: ClipboardEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      void guardedPaste(e.clipboardData?.getData('text/plain') ?? '')
     }
     el!.addEventListener('contextmenu', onContextMenu)
+    el!.addEventListener('paste', onPaste, true)
 
     connect()
 
     return () => {
       cancelAnimationFrame(fitFrame)
+      reconnect.dispose()
       el?.removeEventListener('contextmenu', onContextMenu)
+      el?.removeEventListener('paste', onPaste, true)
       observer.disconnect()
       unregister()
       stopData()
@@ -143,9 +244,9 @@
   $effect(() => {
     const s = app.settings
     if (!term) return
-    term.options.theme = terminalThemes[app.theme]
+    term.options.theme = colors
     term.options.fontFamily = s.terminalFontFamily
-    term.options.fontSize = s.terminalFontSize
+    term.options.fontSize = Math.max(8, s.terminalFontSize + zoom)
     term.options.lineHeight = s.terminalLineHeight
     term.options.cursorStyle = s.cursorStyle
     term.options.cursorBlink = s.cursorBlink
@@ -155,12 +256,13 @@
 
   $effect(() => {
     if (!active || !term) return
+    app.clearMarks(tab.id)
     refit()
     term.focus()
   })
 
   $effect(() => {
-    if (tab.status === 'connected' && active && !app.modals.length && !app.paletteOpen) term?.focus()
+    if (tab.status === 'connected' && active && !searchOpen && !app.modals.length && !app.paletteOpen) term?.focus()
   })
 
   let lastStatus: string | undefined
@@ -169,16 +271,43 @@
     if (!term || status === lastStatus) return
     const previous = lastStatus
     lastStatus = status
-    if (previous === 'connected' && (status === 'closed' || status === 'error')) {
-      term.write(`\r\n\x1b[2m── ${tab.message ?? 'disconnected'} · press r to reconnect ──\x1b[0m\r\n`)
+    const again = reconnect.track(status, tab.dropped, tab.message, app.settings.autoReconnect)
+    if (previous === 'connected' && status === 'closed') {
+      term.write(`\r\n\x1b[2m── ${tab.message ?? 'disconnected'}${again ? ' · reconnecting' : ' · press r to reconnect'} ──\x1b[0m\r\n`)
     }
   })
 </script>
 
-<div class="terminal-view">
+<div class="terminal-view" style:background={colors.background}>
   <div class="xterm-host" bind:this={el}></div>
 
-  {#if tab.status === 'connecting'}
+  {#if searchOpen}
+    <div class="search">
+      <input
+        bind:value={query}
+        placeholder="find"
+        spellcheck="false"
+        oninput={() => find(true, true)}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') find(!e.shiftKey)
+          else if (e.key === 'Escape') closeSearch()
+        }}
+        {@attach focusOnMount()}
+      />
+      <span class="count">{results.count ? `${results.index + 1}/${results.count}` : query ? '0/0' : ''}</span>
+      <button type="button" class="btn small icon ghost" aria-label="Previous match" onclick={() => find(false)}><ChevronUp /></button>
+      <button type="button" class="btn small icon ghost" aria-label="Next match" onclick={() => find(true)}><ChevronDown /></button>
+      <button type="button" class="btn small icon ghost" aria-label="Close search" onclick={closeSearch}><X /></button>
+    </div>
+  {/if}
+
+  {#if zoom !== 0}
+    <button type="button" class="zoom" title="Reset zoom (Ctrl+0)" onclick={() => (zoom = 0)}>
+      {zoom > 0 ? '+' : ''}{zoom}pt
+    </button>
+  {/if}
+
+  {#if tab.status === 'connecting' && !retry}
     <div class="overlay">
       <div class="panel">
         <p class="strong"><span class="dot connecting"></span> connecting to {tab.title}</p>
@@ -186,13 +315,22 @@
         <button type="button" class="btn small" onclick={() => app.closeTab(tab.id)}>Cancel</button>
       </div>
     </div>
+  {:else if retry}
+    <div class="bar">
+      <span class="muted">
+        <span class="dot connecting"></span>
+        {tab.status === 'connecting' ? `reconnecting (attempt ${retry?.attempt})…` : `connection lost · retrying in ${retry?.seconds}s (attempt ${retry?.attempt})`}
+      </span>
+      <button type="button" class="btn small" onclick={reconnectNow}>Retry now</button>
+      <button type="button" class="btn small ghost" onclick={() => reconnect.stop()}>Stop</button>
+    </div>
   {:else if !live && tab.status === 'error'}
     <div class="overlay">
       <div class="panel error">
         <p class="strong"><span class="dot error"></span> could not connect to {tab.title}</p>
         <p class="message selectable">{tab.message}</p>
         <div class="actions">
-          <button type="button" class="btn small strong" onclick={connect}>Reconnect</button>
+          <button type="button" class="btn small strong" onclick={reconnectNow}>Reconnect</button>
           {#if hostId}
             <button
               type="button"
@@ -211,7 +349,7 @@
   {:else if tab.status === 'closed'}
     <div class="bar">
       <span class="muted">[x] {tab.message ?? 'session closed'}</span>
-      <button type="button" class="btn small" onclick={connect}>Reconnect <span class="kbd">r</span></button>
+      <button type="button" class="btn small" onclick={reconnectNow}>Reconnect <span class="kbd">r</span></button>
       <button type="button" class="btn small ghost" onclick={() => app.closeTab(tab.id)}>Close tab</button>
     </div>
   {/if}
@@ -223,7 +361,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg);
   }
   .xterm-host {
     flex: 1;
@@ -235,6 +372,47 @@
   }
   .xterm-host :global(.xterm-viewport) {
     background: transparent !important;
+  }
+  .search {
+    position: absolute;
+    top: 8px;
+    right: 18px;
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 4px 4px 10px;
+    border: 1px solid var(--border-weak);
+    border-radius: var(--radius-lg);
+    background: var(--bg);
+    box-shadow: var(--shadow);
+  }
+  .search input {
+    width: 200px;
+    border: 0;
+    background: none;
+    color: var(--text-strong);
+    font: inherit;
+    outline: none;
+  }
+  .count {
+    min-width: 48px;
+    color: var(--text-weak);
+    font-size: 12px;
+    text-align: right;
+  }
+  .zoom {
+    position: absolute;
+    right: 18px;
+    bottom: 10px;
+    z-index: 11;
+    padding: 2px 8px;
+    border: 1px solid var(--border-weak);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text-weak);
+    font-size: 11px;
+    cursor: pointer;
   }
   .overlay {
     position: absolute;
@@ -280,7 +458,10 @@
     border-top: 1px solid var(--border-weak);
     background: var(--bg-weak);
   }
-  .bar span:first-child {
+  .bar > span:first-child {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex: 1;
   }
 </style>

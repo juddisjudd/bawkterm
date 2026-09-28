@@ -1,5 +1,8 @@
+export type HostKind = 'ssh' | 'rdp'
+
 export interface Host {
   id: string
+  kind: HostKind
   label: string
   address: string
   port: number
@@ -14,6 +17,9 @@ export interface Host {
   notes: string
   createdAt: number
   updatedAt: number
+  rdpFullscreen: boolean
+  startupCommand: string
+  bookmarks: string[]
   lastUsedAt?: number
 }
 
@@ -93,6 +99,13 @@ export interface Settings {
   autoLockMinutes: number
   sftpShowHidden: boolean
   keepAliveSec: number
+  editorCommand: string
+  autoReconnect: boolean
+  pasteProtection: boolean
+  osc52: boolean
+  bellNotify: boolean
+  terminalTheme: string
+  restoreTabs: boolean
 }
 
 export interface VaultData {
@@ -104,6 +117,21 @@ export interface VaultData {
   snippets: Snippet[]
   settings: Settings
   sync: SyncState
+  local: LocalState
+}
+
+export interface SavedTab {
+  kind: 'ssh' | 'sftp' | 'docker'
+  target: ConnectTarget
+  title: string
+  command?: string
+}
+
+// per device, never synced
+export interface LocalState {
+  tabs: SavedTab[]
+  active: number
+  lastPaths: Record<string, string>
 }
 
 export type VaultState = 'none' | 'locked' | 'unlocked'
@@ -139,10 +167,42 @@ export type ConnectTarget = { hostId: string } | { adhoc: AdhocTarget }
 
 export type SessionStatus = 'connecting' | 'connected' | 'closed' | 'error'
 
+export interface ContainerInfo {
+  id: string
+  name: string
+  image: string
+  state: string
+  status: string
+  ports: string
+  project: string
+  service: string
+}
+
+export interface ContainerStats {
+  id: string
+  cpu: string
+  mem: string
+}
+
+export type DockerAction = 'start' | 'stop' | 'restart'
+export type DockerCommand = 'shell' | 'logs'
+
+export type EditState = 'open' | 'uploading' | 'uploaded' | 'error' | 'closed'
+
+export interface EditInfo {
+  sessionId: string
+  remotePath: string
+  name: string
+  state: EditState
+  message?: string
+  at: number
+}
+
 export interface SessionEvent {
   sessionId: string
   status: SessionStatus
   message?: string
+  dropped?: boolean
 }
 
 export interface FileEntry {
@@ -156,7 +216,7 @@ export interface FileEntry {
 }
 
 export type TransferDirection = 'upload' | 'download'
-export type TransferState = 'queued' | 'active' | 'done' | 'error' | 'cancelled'
+export type TransferState = 'queued' | 'active' | 'done' | 'error' | 'cancelled' | 'skipped'
 
 export interface TransferInfo {
   id: string
@@ -181,7 +241,7 @@ export interface PromptField {
   value?: string
 }
 
-export type PromptKind = 'hostkey-new' | 'hostkey-changed' | 'credentials' | 'kbd-interactive' | 'passphrase'
+export type PromptKind = 'hostkey-new' | 'hostkey-changed' | 'credentials' | 'kbd-interactive' | 'passphrase' | 'confirm'
 
 export interface PromptRequest {
   id: string
@@ -194,11 +254,19 @@ export interface PromptRequest {
   confirmLabel: string
   danger?: boolean
   checkbox?: { name: string; label: string }
+  choices?: PromptChoice[]
+}
+
+export interface PromptChoice {
+  id: string
+  label: string
+  danger?: boolean
 }
 
 export interface PromptResponse {
   values: Record<string, string>
   checked: boolean
+  choice?: string
 }
 
 export interface ImportSummary {

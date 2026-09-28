@@ -1,6 +1,8 @@
 import { DEFAULT_SETTINGS } from '@shared/defaults'
 import type {
+  EditInfo,
   ConnectTarget,
+  PromptChoice,
   PromptField,
   PromptRequest,
   PromptResponse,
@@ -10,11 +12,12 @@ import type {
   SyncStatus,
   TransferInfo,
   VaultData,
-  VaultStatus
+  VaultStatus,
+  LocalState
 } from '@shared/types'
 
 export type Section = 'hosts' | 'keychain' | 'snippets' | 'known' | 'settings'
-export type TabKind = 'ssh' | 'sftp'
+export type TabKind = 'ssh' | 'sftp' | 'docker'
 
 export interface Tab {
   id: string
@@ -23,6 +26,10 @@ export interface Tab {
   title: string
   status: SessionStatus
   message?: string
+  command?: string
+  dropped?: boolean
+  activity?: boolean
+  bell?: boolean
 }
 
 export interface Modal {
@@ -34,6 +41,7 @@ export interface Modal {
   confirmLabel: string
   danger?: boolean
   checkbox?: { name: string; label: string }
+  choices?: PromptChoice[]
   resolve: (res: PromptResponse | null) => void
 }
 
@@ -59,7 +67,7 @@ class AppState {
   settings = $state.raw<Settings>({ ...DEFAULT_SETTINGS })
   everUnlocked = $state(false)
   tabs = $state<Tab[]>([])
-  active = $state('home')
+  #active = $state('home')
   section = $state<Section>('hosts')
   modals = $state<Modal[]>([])
   toasts = $state<Toast[]>([])
@@ -68,6 +76,7 @@ class AppState {
   paletteMode = $state<'all' | 'snippets'>('all')
   editingHost = $state<string | null>(null)
   transfers = $state<TransferInfo[]>([])
+  edits = $state<EditInfo[]>([])
   syncStatus = $state<SyncStatus>({ phase: 'off' })
   systemDark = $state(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
@@ -76,13 +85,62 @@ class AppState {
   )
 
   private toastSeq = 0
+  private restored = false
+  private pendingLocal: LocalState | null = null
+  private localTimer: ReturnType<typeof setTimeout> | undefined
+
+  get active(): string {
+    return this.#active
+  }
+
+  set active(id: string) {
+    this.#active = id
+    this.persistTabs()
+  }
+
+  updateLocal(change: (local: LocalState) => void): void {
+    if (!this.vault) return
+    const next = structuredClone(this.pendingLocal ?? this.vault.local)
+    change(next)
+    this.pendingLocal = next
+    clearTimeout(this.localTimer)
+    this.localTimer = setTimeout(() => {
+      const local = this.pendingLocal
+      this.pendingLocal = null
+      if (local) void api.session.save(local).catch(() => {})
+    }, 800)
+  }
+
+  rememberPath(key: string, path: string): void {
+    if (path && this.vault?.local.lastPaths[key] !== path) this.updateLocal((l) => (l.lastPaths[key] = path))
+  }
+
+  private persistTabs(): void {
+    if (!this.vault?.settings.restoreTabs) return
+    this.updateLocal((l) => {
+      l.tabs = this.tabs.map((t) => ({ kind: t.kind, target: $state.snapshot(t.target), title: t.title, command: t.command }))
+      l.active = this.tabs.findIndex((t) => t.id === this.#active)
+    })
+  }
+
+  private restoreTabs(data: VaultData): void {
+    const saved = data.local.tabs.filter((t) => !('hostId' in t.target) || data.hosts.some((h) => 'hostId' in t.target && h.id === t.target.hostId))
+    if (!saved.length || this.tabs.length) return
+    for (const t of saved) {
+      this.tabs.push({ id: crypto.randomUUID(), kind: t.kind, target: t.target, title: t.title, command: t.command, status: 'connecting' })
+    }
+    const i = data.local.active
+    this.#active = i >= 0 && i < this.tabs.length ? this.tabs[i].id : 'home'
+  }
 
   constructor() {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => (this.systemDark = e.matches))
     api.vault.onChanged((data) => this.setVault(data))
     api.ssh.onStatus((e) => this.updateTab(e))
     api.sftp.onStatus((e) => this.updateTab(e))
+    api.docker.onStatus((e) => this.updateTab(e))
     api.sftp.onTransfer((info) => this.updateTransfer(info))
+    api.sftp.onEdit((info) => this.updateEdit(info))
     api.prompts.onRequest((req) => this.showPrompt(req))
     api.prompts.onCancel((id) => this.dropModal(id))
     api.sync.onStatus((s) => (this.syncStatus = s))
@@ -102,6 +160,10 @@ class AppState {
     if (data) {
       this.settings = data.settings
       this.everUnlocked = true
+      if (!this.restored) {
+        this.restored = true
+        if (data.settings.restoreTabs) this.restoreTabs(data)
+      }
       if (this.status?.state !== 'unlocked') {
         void this.refreshStatus()
         void api.sync.status().then((s) => (this.syncStatus = s))
@@ -122,15 +184,23 @@ class AppState {
     await api.vault.lock()
   }
 
-  openTab(kind: TabKind, target: ConnectTarget, title: string): void {
-    const tab: Tab = { id: crypto.randomUUID(), kind, target, title, status: 'connecting' }
+  openTab(kind: TabKind, target: ConnectTarget, title: string, command?: string): void {
+    const tab: Tab = { id: crypto.randomUUID(), kind, target, title, status: 'connecting', command }
     this.tabs.push(tab)
     this.active = tab.id
   }
 
   openHost(kind: TabKind, hostId: string): void {
     const host = this.vault?.hosts.find((h) => h.id === hostId)
-    if (host) this.openTab(kind, { hostId }, host.label || host.address)
+    if (!host) return
+    if (host.kind === 'rdp') void this.launchRdp(hostId)
+    else this.openTab(kind, { hostId }, host.label || host.address)
+  }
+
+  async launchRdp(hostId: string): Promise<void> {
+    const host = this.vault?.hosts.find((h) => h.id === hostId)
+    this.toast(`Opening Remote Desktop for ${host?.label || host?.address}`)
+    await api.rdp.launch(hostId).catch((err) => this.fail(err))
   }
 
   closeTab(id: string): void {
@@ -138,9 +208,16 @@ class AppState {
     if (i < 0) return
     const [tab] = this.tabs.splice(i, 1)
     if (tab.kind === 'ssh') void api.ssh.close(id)
-    else void api.sftp.close(id)
+    else if (tab.kind === 'sftp') void api.sftp.close(id)
+    else void api.docker.close(id)
     this.transfers = this.transfers.filter((t) => t.sessionId !== id)
     if (this.active === id) this.active = this.tabs[Math.min(i, this.tabs.length - 1)]?.id ?? 'home'
+    else this.persistTabs()
+  }
+
+  closeOtherTabs(keep: string): void {
+    for (const tab of [...this.tabs]) if (tab.id !== keep) this.closeTab(tab.id)
+    this.active = keep
   }
 
   cycleTab(step: number): void {
@@ -154,6 +231,25 @@ class AppState {
     if (!tab) return
     tab.status = e.status
     tab.message = e.message
+    tab.dropped = e.dropped
+  }
+
+  mark(id: string, kind: 'activity' | 'bell'): void {
+    const tab = this.tabs.find((t) => t.id === id)
+    if (tab && !tab[kind]) tab[kind] = true
+  }
+
+  clearMarks(id: string): void {
+    const tab = this.tabs.find((t) => t.id === id)
+    if (tab && (tab.activity || tab.bell)) {
+      tab.activity = false
+      tab.bell = false
+    }
+  }
+
+  updateEdit(info: EditInfo): void {
+    const rest = this.edits.filter((e) => !(e.sessionId === info.sessionId && e.remotePath === info.remotePath))
+    this.edits = info.state === 'closed' ? rest : [...rest, info]
   }
 
   updateTransfer(info: TransferInfo): void {
@@ -188,6 +284,7 @@ class AppState {
       confirmLabel: req.confirmLabel,
       danger: req.danger,
       checkbox: req.checkbox,
+      choices: req.choices,
       resolve: (res) => api.prompts.respond(req.id, res)
     })
   }

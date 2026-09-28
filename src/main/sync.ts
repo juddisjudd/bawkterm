@@ -98,7 +98,15 @@ function applyItem(d: VaultData, rkey: string, value: unknown): void {
     case 'host': {
       const incoming = value as VaultData['hosts'][number]
       const lastUsedAt = d.hosts.find((h) => h.id === id)?.lastUsedAt
-      upsert(d.hosts, { ...incoming, tags: incoming.tags ?? [], lastUsedAt })
+      upsert(d.hosts, {
+        ...incoming,
+        kind: incoming.kind ?? 'ssh',
+        rdpFullscreen: incoming.rdpFullscreen ?? true,
+        startupCommand: incoming.startupCommand ?? '',
+        bookmarks: incoming.bookmarks ?? [],
+        tags: incoming.tags ?? [],
+        lastUsedAt
+      })
       break
     }
     case 'key':

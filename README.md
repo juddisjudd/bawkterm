@@ -32,9 +32,13 @@ The installer is unsigned, so Windows SmartScreen asks once: **More info → Run
 
 - **Vault**: one master password encrypts every host, key, password and trusted host key (scrypt N=2^17 → AES-256-GCM, file `%APPDATA%/bawkterm/vault.json`). Optional auto-unlock uses Windows DPAPI. Auto-lock after idle minutes.
 - **SSH**: xterm.js tabs with WebGL rendering, flow control, jump hosts (chained), agent auth (OpenSSH agent or Pageant), keyboard-interactive, password and key prompts with "save to vault".
+- **Terminal comforts**: auto-reconnect with backoff when a connection drops (terminal, SFTP and Docker tabs; edits saved while offline upload once back), a per-host command to run after connect, a prompt before multi-line pastes (unless the shell uses bracketed paste), scrollback search, per-tab zoom, OSC 52 copy from remote tmux/vim (write only), background-tab activity (`•`) and bell (`!`) markers with a notification, 12 terminal themes, and tabs reopened on launch.
 - **Host keys**: trust-on-first-use with SHA256 fingerprints; a changed key blocks the connection until you approve it.
-- **SFTP**: local and remote panes, drag and drop (also from Explorer), recursive upload/download/delete, rename, new folder, cancellable transfer queue.
+- **SFTP**: local and remote panes, drag and drop (also from Explorer), recursive upload/download/delete, rename, new folder, cancellable transfer queue. Asks Replace / Keep both / Skip when a name is taken, type-to-filter, remembers the last folder per host, synced bookmarks per host, and "Open terminal here".
 - **Keychain**: generate ed25519 / RSA / ECDSA keys, import OpenSSH, PEM and PuTTY keys, reusable identities (username + password/key).
+- **Docker** (over SSH): containers per host grouped by Compose project, CPU and memory, start / stop / restart, shell into a container or follow its logs in a terminal tab. Falls back to `sudo -n docker` when the user is not in the docker group.
+- **RDP hosts**: saved and synced with the rest of the vault; opens Windows Remote Desktop already signed in, optionally tunnelled through an SSH jump host.
+- **Edit in editor** (SFTP): opens a remote file in VS Code or the Windows default app and uploads every save; asks before replacing a server copy that changed meanwhile.
 - **Snippets**: saved commands; Ctrl+Shift+S runs one in the open terminal (Shift+Enter pastes without running).
 - **Sync** across devices through [bawksync](../bawksync), end-to-end encrypted. Each device keeps its own master password; a one-time sync link carries the key. Newest edit wins per item. Settings stay per device.
 - **Import** hosts, keys and ProxyJump from `~/.ssh/config`.
@@ -45,6 +49,8 @@ The installer is unsigned, so Windows SmartScreen asks once: **More info → Run
 | --- | --- |
 | Ctrl+Shift+P | open host / quick connect (`user@host:port`); Shift+Enter opens SFTP |
 | Ctrl+Shift+S | run a snippet in the terminal |
+| Ctrl+Shift+F | search terminal output |
+| Ctrl+= / Ctrl+- / Ctrl+0 | zoom terminal text in, out, reset |
 | Ctrl+Tab | next tab |
 | Ctrl+Shift+W | close tab |
 | Ctrl+Shift+C / V | copy / paste in terminal (right click also copies or pastes) |

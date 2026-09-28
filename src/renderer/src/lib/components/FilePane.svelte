@@ -29,6 +29,9 @@
     onrename,
     onremove,
     onopen,
+    onedit,
+    onterminal,
+    tools,
     overlay
   }: {
     side: Side
@@ -45,6 +48,9 @@
     onrename: (from: string, to: string) => Promise<void>
     onremove: (entries: FileEntry[]) => Promise<void>
     onopen?: (entry: FileEntry) => void
+    onedit?: (entry: FileEntry) => void
+    onterminal?: (path: string) => void
+    tools?: Snippet
     overlay?: Snippet
   } = $props()
 
@@ -57,6 +63,7 @@
   let sortDir = $state(1)
   let dropping = $state(false)
   let pathInput = $state('')
+  let filter = $state('')
   let listEl = $state<HTMLDivElement>()
   let loadSeq = 0
 
@@ -65,6 +72,7 @@
   const visible = $derived(
     entries
       .filter((e) => showHidden || !e.name.startsWith('.'))
+      .filter((e) => !filter || e.name.toLowerCase().includes(filter.toLowerCase()))
       .sort((a, b) => {
         const d = Number(isDirLike(b)) - Number(isDirLike(a))
         if (d) return d
@@ -103,6 +111,7 @@
   $effect(() => {
     pathInput = path
     void disabled
+    filter = ''
     selected = []
     anchor = -1
     void refresh()
@@ -183,6 +192,12 @@
     const targets = selected.includes(entry.path) ? selectedEntries : [entry]
     const items: MenuItem[] = []
     if (isDirLike(entry) && targets.length === 1) items.push({ label: 'Open', action: () => navigate(entry.path) })
+    if (onterminal && isDirLike(entry) && targets.length === 1) {
+      items.push({ label: 'Open terminal here', action: () => onterminal(entry.path) })
+    }
+    if (onedit && entry.kind === 'file' && targets.length === 1) {
+      items.push({ label: 'Edit in editor', action: () => onedit(entry) })
+    }
     if (onopen && !isDirLike(entry) && targets.length === 1) {
       items.push({ label: 'Open with default app', action: () => onopen(entry) })
     }
@@ -202,6 +217,7 @@
     if (e.target !== e.currentTarget) return
     selected = []
     app.openMenu(e, [
+      ...(onterminal ? [{ label: 'Open terminal here', action: () => onterminal(path) }] : []),
       { label: 'New folder', action: mkdir },
       { label: 'Refresh', action: refresh },
       { label: 'Copy path', action: () => navigator.clipboard.writeText(path) }
@@ -221,7 +237,11 @@
     } else if (e.key === 'Enter' && selectedEntries.length === 1) {
       activate(selectedEntries[0])
     } else if (e.key === 'Backspace') {
-      navigate(ops.parent(path))
+      if (filter) filter = filter.slice(0, -1)
+      else navigate(ops.parent(path))
+    } else if (e.key === 'Escape' && filter) {
+      e.stopPropagation()
+      filter = ''
     } else if (e.key === 'Delete') {
       void remove(selectedEntries)
     } else if (e.key === 'F2' && selectedEntries.length === 1) {
@@ -231,6 +251,12 @@
     } else if (e.key === 'a' && e.ctrlKey) {
       e.preventDefault()
       selected = visible.map((x) => x.path)
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault()
+      filter += e.key
+      const first = visible[0]
+      selected = first ? [first.path] : []
+      anchor = first ? 0 : -1
     }
   }
 
@@ -272,12 +298,21 @@
     <div class="title">
       <span class="side">{side}</span>
       <span class="name">{title}</span>
+      {#if tools}{@render tools()}{/if}
       {#if selectedEntries.length}
         <button type="button" class="btn small" onclick={() => onsend(selectedEntries)} {disabled}>
           {sendLabel} {selectedEntries.length}
         </button>
       {/if}
     </div>
+    {#if filter}
+      <div class="filter">
+        <span class="muted">filter</span>
+        <span class="strong">{filter}</span>
+        <span class="muted">· {visible.length} match{visible.length === 1 ? '' : 'es'} · esc clears</span>
+        <button type="button" class="btn small icon ghost" aria-label="Clear filter" onclick={() => (filter = '')}>×</button>
+      </div>
+    {/if}
     <div class="tools">
       <button type="button" class="btn small icon ghost" aria-label="Up" title="Up (Backspace)" disabled={disabled || ops.parent(path) === null} onclick={() => navigate(ops.parent(path))}><ArrowUp /></button>
       <form
@@ -388,6 +423,12 @@
     font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
   }
   .tools {
     display: flex;

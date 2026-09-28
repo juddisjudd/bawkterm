@@ -1,5 +1,5 @@
 import { promises as fsp } from 'node:fs'
-import { basename, join } from 'node:path'
+import path, { basename, join } from 'node:path'
 import { posix } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { SFTPWrapper, Stats } from 'ssh2'
@@ -7,6 +7,7 @@ import type { ConnectTarget, FileEntry, SessionEvent, TransferDirection, Transfe
 import type { Prompter, Send } from '../prompts'
 import type { Vault } from '../vault'
 import { CancelledError, closeConnection, connect, type Connection } from './connect'
+import { RemoteEditor } from './remote-edit'
 
 const CHUNK = 32 * 1024
 const PARALLEL = 32
@@ -14,11 +15,22 @@ const S_IFMT = 0o170000
 const S_IFDIR = 0o040000
 const S_IFLNK = 0o120000
 
+type Policy = 'replace' | 'rename' | 'skip'
+
+interface Batch {
+  policy?: Policy
+}
+
 interface Job {
   info: TransferInfo
   cancelled: boolean
+  batch: Batch
   run: (job: Job) => Promise<void>
 }
+
+class SkippedError extends Error {}
+
+type Exists = (target: string) => Promise<'file' | 'dir' | null>
 
 interface Session {
   id: string
@@ -28,6 +40,7 @@ interface Session {
   queue: Job[]
   running: boolean
   closed: boolean
+  userClosed?: boolean
 }
 
 interface Planned {
@@ -68,6 +81,7 @@ async function pump(size: number, work: (pos: number, len: number) => Promise<vo
 
 export class SftpSessions {
   private sessions = new Map<string, Session>()
+  readonly editor: RemoteEditor
   private jobs = new Map<string, Job>()
   private lastEmit = new Map<string, number>()
 
@@ -75,10 +89,12 @@ export class SftpSessions {
     private vault: Vault,
     private prompter: Prompter,
     private send: Send
-  ) {}
+  ) {
+    this.editor = new RemoteEditor((id) => this.get(id), prompter, send, vault)
+  }
 
-  private status(sessionId: string, status: SessionEvent['status'], message?: string): void {
-    const event: SessionEvent = { sessionId, status, message }
+  private status(sessionId: string, status: SessionEvent['status'], message?: string, dropped?: boolean): void {
+    const event: SessionEvent = { sessionId, status, message, dropped }
     this.send('sftp:status', event)
   }
 
@@ -109,25 +125,30 @@ export class SftpSessions {
       throw new Error(message)
     }
     const { conn, sftp } = session
-    conn.client.on('close', () => this.finish(session, 'Connection closed'))
+    conn.client.on('close', () => this.finish(session, 'Connection lost'))
     sftp.on('close', () => this.finish(session, 'SFTP channel closed'))
     const home = await call<string>((cb) => sftp.realpath('.', cb)).catch(() => '/')
     this.status(sessionId, 'connected')
+    this.editor.resume(sessionId)
     return { home, title: conn.label }
   }
 
   private finish(session: Session, message: string): void {
     if (session.closed) return
     session.closed = true
+    const dropped = !session.userClosed
+    // edits survive a drop and upload again once the tab reconnects
+    if (!dropped) this.editor.stopSession(session.id)
     this.sessions.delete(session.id)
     for (const job of session.queue) this.cancel(job.info.id)
     if (session.conn) closeConnection(session.conn)
-    this.status(session.id, 'closed', message)
+    this.status(session.id, 'closed', message, dropped)
   }
 
   close(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
+    session.userClosed = true
     this.prompter.cancelSession(sessionId)
     session.abort.abort()
     this.finish(session, 'Closed')
@@ -206,17 +227,52 @@ export class SftpSessions {
   }
 
   upload(sessionId: string, localPaths: string[], remoteDir: string): void {
+    const batch: Batch = {}
     for (const src of localPaths) {
       const name = basename(src)
-      this.enqueue(sessionId, 'upload', name, src, posix.join(remoteDir, name), (job) => this.runUpload(sessionId, job))
+      this.enqueue(sessionId, 'upload', name, src, posix.join(remoteDir, name), batch, (job) => this.runUpload(sessionId, job))
     }
   }
 
   download(sessionId: string, remotePaths: string[], localDir: string): void {
+    const batch: Batch = {}
     for (const src of remotePaths) {
       const name = posix.basename(src)
-      this.enqueue(sessionId, 'download', name, src, join(localDir, name), (job) => this.runDownload(sessionId, job))
+      this.enqueue(sessionId, 'download', name, src, join(localDir, name), batch, (job) => this.runDownload(sessionId, job))
     }
+  }
+
+  private async resolveConflict(sessionId: string, job: Job, exists: Exists, paths: typeof posix): Promise<string> {
+    const kind = await exists(job.info.dest)
+    if (!kind) return job.info.dest
+    let choice = job.batch.policy
+    if (!choice) {
+      const answer = await this.prompter.forSession(sessionId)({
+        kind: 'confirm',
+        title: kind === 'dir' ? 'Folder already exists' : 'File already exists',
+        message: `"${job.info.name}" already exists in ${paths.dirname(job.info.dest)}.`,
+        fields: [],
+        confirmLabel: '',
+        checkbox: { name: 'all', label: 'Do the same for the rest of this transfer' },
+        choices: [
+          { id: 'replace', label: kind === 'dir' ? 'Merge' : 'Replace', danger: kind === 'file' },
+          { id: 'rename', label: 'Keep both' },
+          { id: 'skip', label: 'Skip' }
+        ]
+      })
+      choice = (answer?.choice as Policy | undefined) ?? 'skip'
+      if (answer?.checked) job.batch.policy = choice
+    }
+    if (choice === 'skip') throw new SkippedError()
+    if (choice === 'replace') return job.info.dest
+    const dir = paths.dirname(job.info.dest)
+    const ext = kind === 'file' ? paths.extname(job.info.name) : ''
+    const stem = job.info.name.slice(0, job.info.name.length - ext.length)
+    for (let n = 1; n < 1000; n++) {
+      const candidate = paths.join(dir, `${stem} (${n})${ext}`)
+      if (!(await exists(candidate))) return candidate
+    }
+    throw new Error('No free name found')
   }
 
   cancel(transferId: string): void {
@@ -235,6 +291,7 @@ export class SftpSessions {
     name: string,
     source: string,
     dest: string,
+    batch: Batch,
     run: Job['run']
   ): void {
     const session = this.sessions.get(sessionId)
@@ -255,6 +312,7 @@ export class SftpSessions {
         startedAt: Date.now()
       },
       cancelled: false,
+      batch,
       run
     }
     this.jobs.set(job.info.id, job)
@@ -276,7 +334,7 @@ export class SftpSessions {
         await job.run(job)
         job.info.state = 'done'
       } catch (err) {
-        job.info.state = err instanceof CancelledError || job.cancelled ? 'cancelled' : 'error'
+        job.info.state = err instanceof SkippedError ? 'skipped' : err instanceof CancelledError || job.cancelled ? 'cancelled' : 'error'
         if (job.info.state === 'error') job.info.error = (err as Error).message
       }
       this.emit(job, true)
@@ -334,6 +392,13 @@ export class SftpSessions {
 
   private async runUpload(sessionId: string, job: Job): Promise<void> {
     const sftp = this.get(sessionId)
+    job.info.dest = await this.resolveConflict(
+      sessionId,
+      job,
+      (p) => call<Stats>((cb) => sftp.stat(p, cb)).then((s) => (isDir(s.mode) ? 'dir' : 'file'), () => null),
+      posix
+    )
+    this.emit(job, true)
     const plan = await this.planLocal(job.info.source, job.info.dest)
     job.info.total = plan.files.reduce((n, f) => n + f.size, 0)
     job.info.files = plan.files.length
@@ -390,6 +455,13 @@ export class SftpSessions {
 
   private async runDownload(sessionId: string, job: Job): Promise<void> {
     const sftp = this.get(sessionId)
+    job.info.dest = await this.resolveConflict(
+      sessionId,
+      job,
+      (p) => fsp.stat(p).then((s) => (s.isDirectory() ? 'dir' : 'file'), () => null),
+      path as unknown as typeof posix
+    )
+    this.emit(job, true)
     const plan = await this.planRemote(sftp, job.info.source, job.info.dest)
     job.info.total = plan.files.reduce((n, f) => n + f.size, 0)
     job.info.files = plan.files.length

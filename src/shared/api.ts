@@ -1,4 +1,9 @@
 import type {
+  ContainerInfo,
+  ContainerStats,
+  EditInfo,
+  DockerAction,
+  DockerCommand,
   ConnectTarget,
   FileEntry,
   Host,
@@ -15,7 +20,8 @@ import type {
   SyncStatus,
   TransferInfo,
   VaultData,
-  VaultStatus
+  VaultStatus,
+  LocalState
 } from './types'
 
 type Unsubscribe = () => void
@@ -60,6 +66,9 @@ export interface BawkApi {
     disconnect(): Promise<void>
     onStatus(cb: (status: SyncStatus) => void): Unsubscribe
   }
+  session: {
+    save(state: LocalState): Promise<void>
+  }
   knownHosts: {
     remove(host: string, keyType: string): Promise<void>
   }
@@ -68,7 +77,7 @@ export interface BawkApi {
   }
   importSshConfig(): Promise<ImportSummary>
   ssh: {
-    open(sessionId: string, target: ConnectTarget, cols: number, rows: number): Promise<void>
+    open(sessionId: string, target: ConnectTarget, cols: number, rows: number, command?: string): Promise<void>
     write(sessionId: string, data: string): void
     resize(sessionId: string, cols: number, rows: number): void
     ack(sessionId: string, bytes: number): void
@@ -90,6 +99,21 @@ export interface BawkApi {
     close(sessionId: string): Promise<void>
     onStatus(cb: (event: SessionEvent) => void): Unsubscribe
     onTransfer(cb: (info: TransferInfo) => void): Unsubscribe
+    edit(sessionId: string, remotePath: string): Promise<void>
+    editStop(sessionId: string, remotePath: string): Promise<void>
+    onEdit(cb: (info: EditInfo) => void): Unsubscribe
+  }
+  rdp: {
+    launch(hostId: string): Promise<void>
+  }
+  docker: {
+    open(sessionId: string, target: ConnectTarget): Promise<{ title: string; version: string }>
+    list(sessionId: string): Promise<ContainerInfo[]>
+    stats(sessionId: string): Promise<ContainerStats[]>
+    action(sessionId: string, containerId: string, action: DockerAction): Promise<void>
+    command(sessionId: string, containerId: string, kind: DockerCommand): Promise<string>
+    close(sessionId: string): Promise<void>
+    onStatus(cb: (event: SessionEvent) => void): Unsubscribe
   }
   local: {
     home(): Promise<string>
@@ -105,6 +129,7 @@ export interface BawkApi {
     respond(id: string, res: PromptResponse | null): void
   }
   win: {
+    focus(): void
     minimize(): void
     toggleMaximize(): void
     close(): void
@@ -113,6 +138,7 @@ export interface BawkApi {
   }
   app: {
     openExternal(url: string): void
+    copy(text: string): void
     pathForFile(file: File): string
   }
 }

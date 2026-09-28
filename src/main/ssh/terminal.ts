@@ -17,6 +17,8 @@ interface Session {
   queue: Buffer[]
   flushScheduled: boolean
   closed: boolean
+  exited: boolean
+  userClosed: boolean
 }
 
 export class Terminals {
@@ -28,12 +30,12 @@ export class Terminals {
     private send: Send
   ) {}
 
-  private status(sessionId: string, status: SessionEvent['status'], message?: string): void {
-    const event: SessionEvent = { sessionId, status, message }
+  private status(sessionId: string, status: SessionEvent['status'], message?: string, dropped?: boolean): void {
+    const event: SessionEvent = { sessionId, status, message, dropped }
     this.send('ssh:status', event)
   }
 
-  async open(sessionId: string, target: ConnectTarget, cols: number, rows: number): Promise<void> {
+  async open(sessionId: string, target: ConnectTarget, cols: number, rows: number, command?: string): Promise<void> {
     this.close(sessionId)
     const session: Session = {
       id: sessionId,
@@ -42,7 +44,9 @@ export class Terminals {
       paused: false,
       queue: [],
       flushScheduled: false,
-      closed: false
+      closed: false,
+      exited: false,
+      userClosed: false
     }
     this.sessions.set(sessionId, session)
     this.status(sessionId, 'connecting')
@@ -54,10 +58,11 @@ export class Terminals {
         signal: session.abort.signal,
         onProgress: (message) => this.status(sessionId, 'connecting', message)
       })
+      const pty = { term: 'xterm-256color', cols, rows }
       session.stream = await new Promise<ClientChannel>((resolve, reject) => {
-        session.conn!.client.shell({ term: 'xterm-256color', cols, rows }, (err, stream) =>
-          err ? reject(err) : resolve(stream)
-        )
+        const done = (err: Error | undefined, stream: ClientChannel): void => (err ? reject(err) : resolve(stream))
+        if (command) session.conn!.client.exec(command, { pty }, done)
+        else session.conn!.client.shell(pty, done)
       })
     } catch (err) {
       if (session.conn) closeConnection(session.conn)
@@ -79,10 +84,14 @@ export class Terminals {
     const onData = (chunk: Buffer): void => this.push(session, chunk)
     stream.on('data', onData)
     stream.stderr.on('data', onData)
-    stream.on('close', () => this.finish(session, 'Session ended'))
+    stream.on('exit', () => (session.exited = true))
+    stream.on('close', () => this.finish(session, command ? 'Command finished' : 'Session ended'))
     conn.client.on('close', () => this.finish(session, 'Connection closed'))
     conn.client.on('error', (err) => this.finish(session, err.message))
     this.status(sessionId, 'connected')
+
+    const startup = !command && 'hostId' in target ? this.vault.get().hosts.find((h) => h.id === target.hostId)?.startupCommand : ''
+    if (startup?.trim()) stream.write(startup.trim().replace(/\r?\n/g, '\r') + '\r')
   }
 
   private push(session: Session, chunk: Buffer): void {
@@ -108,7 +117,8 @@ export class Terminals {
     session.closed = true
     this.sessions.delete(session.id)
     if (session.conn) closeConnection(session.conn)
-    this.status(session.id, 'closed', message)
+    const dropped = !session.exited && !session.userClosed
+    this.status(session.id, 'closed', dropped && message === 'Session ended' ? 'Connection lost' : message, dropped)
   }
 
   write(sessionId: string, data: string): void {
@@ -133,6 +143,7 @@ export class Terminals {
   close(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
+    session.userClosed = true
     this.prompter.cancelSession(sessionId)
     session.abort.abort()
     this.finish(session, 'Closed')

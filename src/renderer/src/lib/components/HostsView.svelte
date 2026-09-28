@@ -3,7 +3,7 @@
   import Plus from '@lucide/svelte/icons/plus'
   import Pencil from '@lucide/svelte/icons/pencil'
   import type { AdhocTarget, Host } from '@shared/types'
-  import { app } from '$lib/state.svelte'
+  import { app, type MenuItem } from '$lib/state.svelte'
   import { ago } from '$lib/format'
   import PageHeader from './PageHeader.svelte'
   import HostEditor from './HostEditor.svelte'
@@ -31,7 +31,7 @@
     if (identity) out.push(`@${identity.label}`)
     if (h.keyId) out.push('key')
     if (h.password) out.push('pw')
-    if (h.useAgent) out.push('agent')
+    if (h.useAgent && h.kind === 'ssh') out.push('agent')
     if (h.jumpHostId) out.push('jump')
     return out
   }
@@ -39,7 +39,8 @@
   function userAt(h: Host): string {
     const identity = h.identityId ? vault.identities.find((i) => i.id === h.identityId) : undefined
     const user = h.username || identity?.username
-    return `${user ? `${user}@` : ''}${h.address}${h.port !== 22 ? `:${h.port}` : ''}`
+    const defaultPort = h.kind === 'rdp' ? 3389 : 22
+    return `${user ? `${user}@` : ''}${h.address}${h.port !== defaultPort ? `:${h.port}` : ''}`
   }
 
   function parseQuick(text: string): AdhocTarget | null {
@@ -79,9 +80,16 @@
   }
 
   function menu(e: MouseEvent, h: Host): void {
+    const open: MenuItem[] =
+      h.kind === 'rdp'
+        ? [{ label: 'Open Remote Desktop', action: () => app.launchRdp(h.id) }]
+        : [
+            { label: 'Open SSH', action: () => app.openHost('ssh', h.id) },
+            { label: 'Open SFTP', action: () => app.openHost('sftp', h.id) },
+            { label: 'Open Docker', action: () => app.openHost('docker', h.id) }
+          ]
     app.openMenu(e, [
-      { label: 'Open SSH', action: () => app.openHost('ssh', h.id) },
-      { label: 'Open SFTP', action: () => app.openHost('sftp', h.id) },
+      ...open,
       'sep',
       { label: 'Edit', action: () => (app.editingHost = h.id) },
       { label: 'Duplicate', action: () => duplicate(h) },
@@ -144,17 +152,23 @@
             ondblclick={() => app.openHost('ssh', h.id)}
             oncontextmenu={(e) => menu(e, h)}
           >
-            <span class="marker">[&gt;]</span>
+            <span class="marker">{h.kind === 'rdp' ? '[#]' : '[>]'}</span>
             <span class="label">{h.label || h.address}</span>
             <span class="addr">{userAt(h)}</span>
             <span class="tags">
+              {#if h.kind === 'rdp'}<span class="tag">rdp</span>{/if}
               {#each auth(h) as a (a)}<span class="tag">{a}</span>{/each}
               {#each h.tags as t (t)}<span class="tag">#{t}</span>{/each}
             </span>
             <span class="used" title="last connected">{ago(h.lastUsedAt)}</span>
             <span class="actions">
-              <button type="button" class="btn small" onclick={() => app.openHost('ssh', h.id)}>ssh</button>
-              <button type="button" class="btn small" onclick={() => app.openHost('sftp', h.id)}>sftp</button>
+              {#if h.kind === 'rdp'}
+                <button type="button" class="btn small" onclick={() => app.launchRdp(h.id)}>remote desktop</button>
+              {:else}
+                <button type="button" class="btn small" onclick={() => app.openHost('ssh', h.id)}>ssh</button>
+                <button type="button" class="btn small" onclick={() => app.openHost('sftp', h.id)}>sftp</button>
+                <button type="button" class="btn small" onclick={() => app.openHost('docker', h.id)}>docker</button>
+              {/if}
               <button
                 type="button"
                 class="btn small icon ghost"
@@ -270,7 +284,7 @@
   }
   .host {
     display: grid;
-    grid-template-columns: 32px minmax(120px, 1.2fr) minmax(140px, 1.4fr) minmax(0, 1fr) 72px auto;
+    grid-template-columns: 32px minmax(120px, 1.2fr) minmax(140px, 1.4fr) minmax(0, 1fr) 72px 222px;
     align-items: center;
     gap: 12px;
     min-height: 44px;
@@ -319,6 +333,7 @@
   }
   .actions {
     display: flex;
+    justify-content: flex-end;
     gap: 4px;
     opacity: 0;
   }

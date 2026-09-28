@@ -54,6 +54,9 @@ const api: BawkApi = {
     disconnect: () => invoke('sync:disconnect'),
     onStatus: (cb) => on('sync:status', cb)
   },
+  session: {
+    save: (state) => invoke('session:save', state)
+  },
   knownHosts: {
     remove: (host, keyType) => invoke('knownHosts:remove', host, keyType)
   },
@@ -62,7 +65,7 @@ const api: BawkApi = {
   },
   importSshConfig: () => invoke('import:sshConfig'),
   ssh: {
-    open: (sessionId, target, cols, rows) => invoke('ssh:open', sessionId, target, cols, rows),
+    open: (sessionId, target, cols, rows, command) => invoke('ssh:open', sessionId, target, cols, rows, command),
     write: (sessionId, data) => ipcRenderer.send('ssh:write', sessionId, data),
     resize: (sessionId, cols, rows) => ipcRenderer.send('ssh:resize', sessionId, cols, rows),
     ack: (sessionId, bytes) => ipcRenderer.send('ssh:ack', sessionId, bytes),
@@ -83,7 +86,22 @@ const api: BawkApi = {
     cancel: (transferId) => invoke('sftp:cancel', transferId),
     close: (sessionId) => invoke('sftp:close', sessionId),
     onStatus: (cb) => on('sftp:status', cb),
-    onTransfer: (cb) => on('sftp:transfer', cb)
+    onTransfer: (cb) => on('sftp:transfer', cb),
+    edit: (sessionId, remotePath) => invoke('sftp:edit', sessionId, remotePath),
+    editStop: (sessionId, remotePath) => invoke('sftp:editStop', sessionId, remotePath),
+    onEdit: (cb) => on('sftp:edit', cb)
+  },
+  rdp: {
+    launch: (hostId) => invoke('rdp:launch', hostId)
+  },
+  docker: {
+    open: (sessionId, target) => invoke('docker:open', sessionId, target),
+    list: (sessionId) => invoke('docker:list', sessionId),
+    stats: (sessionId) => invoke('docker:stats', sessionId),
+    action: (sessionId, containerId, action) => invoke('docker:action', sessionId, containerId, action),
+    command: (sessionId, containerId, kind) => invoke('docker:command', sessionId, containerId, kind),
+    close: (sessionId) => invoke('docker:close', sessionId),
+    onStatus: (cb) => on('docker:status', cb)
   },
   local: {
     home: () => invoke('local:home'),
@@ -99,6 +117,7 @@ const api: BawkApi = {
     respond: (id, res) => ipcRenderer.send('prompt:respond', id, res)
   },
   win: {
+    focus: () => ipcRenderer.send('window:focus'),
     minimize: () => ipcRenderer.send('window:minimize'),
     toggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
     close: () => ipcRenderer.send('window:close'),
@@ -107,6 +126,7 @@ const api: BawkApi = {
   },
   app: {
     openExternal: (url) => ipcRenderer.send('app:openExternal', url),
+    copy: (text) => ipcRenderer.send('app:copy', text),
     pathForFile: (file) => webUtils.getPathForFile(file)
   }
 }

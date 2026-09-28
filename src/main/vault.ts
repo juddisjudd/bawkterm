@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron'
 import { existsSync, promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scrypt } from 'node:crypto'
-import { DEFAULT_SETTINGS, emptySync, emptyVault } from '@shared/defaults'
+import { DEFAULT_SETTINGS, emptyLocal, emptySync, emptyVault } from '@shared/defaults'
 import type { VaultData, VaultStatus } from '@shared/types'
 
 interface KdfParams {
@@ -65,13 +65,21 @@ function normalize(raw: Partial<VaultData>): VaultData {
   const base = emptyVault()
   return {
     version: 1,
-    hosts: (raw.hosts ?? []).map((h) => ({ ...h, tags: h.tags ?? [] })),
+    hosts: (raw.hosts ?? []).map((h) => ({
+      ...h,
+      kind: h.kind ?? 'ssh',
+      rdpFullscreen: h.rdpFullscreen ?? true,
+      startupCommand: h.startupCommand ?? '',
+      bookmarks: h.bookmarks ?? [],
+      tags: h.tags ?? []
+    })),
     keys: (raw.keys ?? base.keys).map((k) => ({ ...k, updatedAt: k.updatedAt ?? k.createdAt })),
     identities: (raw.identities ?? base.identities).map((i) => ({ ...i, updatedAt: i.updatedAt ?? i.createdAt })),
     knownHosts: raw.knownHosts ?? base.knownHosts,
     snippets: raw.snippets ?? base.snippets,
     settings: { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) },
-    sync: { ...emptySync(), ...(raw.sync ?? {}) }
+    sync: { ...emptySync(), ...(raw.sync ?? {}) },
+    local: { ...emptyLocal(), ...(raw.local ?? {}) }
   }
 }
 

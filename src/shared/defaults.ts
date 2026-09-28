@@ -1,4 +1,4 @@
-import type { Host, Identity, Settings, Snippet, SyncState, VaultData } from './types'
+import type { Host, Identity, LocalState, Settings, Snippet, SyncState, VaultData } from './types'
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
@@ -12,7 +12,14 @@ export const DEFAULT_SETTINGS: Settings = {
   rightClickPaste: true,
   autoLockMinutes: 0,
   sftpShowHidden: false,
-  keepAliveSec: 30
+  keepAliveSec: 30,
+  editorCommand: '',
+  autoReconnect: true,
+  pasteProtection: true,
+  osc52: true,
+  bellNotify: true,
+  terminalTheme: 'auto',
+  restoreTabs: true
 }
 
 export function emptyVault(): VaultData {
@@ -24,7 +31,8 @@ export function emptyVault(): VaultData {
     knownHosts: [],
     snippets: [],
     settings: { ...DEFAULT_SETTINGS },
-    sync: emptySync()
+    sync: emptySync(),
+    local: emptyLocal()
   }
 }
 
@@ -32,6 +40,7 @@ export function blankHost(): Host {
   const now = Date.now()
   return {
     id: '',
+    kind: 'ssh',
     label: '',
     address: '',
     port: 22,
@@ -44,9 +53,16 @@ export function blankHost(): Host {
     jumpHostId: '',
     tags: [],
     notes: '',
+    rdpFullscreen: true,
+    startupCommand: '',
+    bookmarks: [],
     createdAt: now,
     updatedAt: now
   }
+}
+
+export function emptyLocal(): LocalState {
+  return { tabs: [], active: -1, lastPaths: {} }
 }
 
 export function emptySync(): SyncState {

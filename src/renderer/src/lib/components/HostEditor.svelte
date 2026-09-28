@@ -20,7 +20,15 @@
 
   const identity = $derived(vault.identities.find((i) => i.id === host.identityId))
   const groups = $derived([...new Set(vault.hosts.map((h) => h.group).filter(Boolean))].sort())
-  const jumpOptions = $derived(vault.hosts.filter((h) => h.id !== host.id))
+  const jumpOptions = $derived(vault.hosts.filter((h) => h.id !== host.id && h.kind === 'ssh'))
+  const rdp = $derived(host.kind === 'rdp')
+
+  function setKind(kind: Host['kind']): void {
+    if (kind === host.kind) return
+    if (kind === 'rdp' && host.port === 22) host.port = 3389
+    if (kind === 'ssh' && host.port === 3389) host.port = 22
+    host.kind = kind
+  }
 
   async function save(connect: boolean): Promise<void> {
     if (!host.address.trim()) {
@@ -58,6 +66,13 @@
 </script>
 
 <Drawer title={existing ? 'edit host' : 'new host'} {onclose}>
+  <div class="field">
+    <span class="label">type</span>
+    <div class="seg" role="radiogroup">
+      <button type="button" role="radio" aria-checked={!rdp} class:active={!rdp} onclick={() => setKind('ssh')}>ssh</button>
+      <button type="button" role="radio" aria-checked={rdp} class:active={rdp} onclick={() => setKind('rdp')}>rdp</button>
+    </div>
+  </div>
   <label class="field">
     <span class="label">address</span>
     <div class="row-fields">
@@ -102,7 +117,7 @@
     <input
       class="input"
       bind:value={host.username}
-      placeholder={identity?.username ? `${identity.username} (from identity)` : 'root'}
+      placeholder={identity?.username ? `${identity.username} (from identity)` : rdp ? 'DOMAIN\\user or user' : 'root'}
       spellcheck="false"
     />
   </label>
@@ -113,7 +128,7 @@
         class="input"
         type={showPassword ? 'text' : 'password'}
         bind:value={host.password}
-        placeholder={identity?.password ? '•••••• (from identity)' : 'ask when connecting'}
+        placeholder={identity?.password ? '•••••• (from identity)' : rdp ? 'Remote Desktop asks when empty' : 'ask when connecting'}
         autocomplete="off"
       />
       <button
@@ -126,6 +141,9 @@
       </button>
     </div>
   </label>
+  {#if rdp}
+    <Checkbox bind:checked={host.rdpFullscreen} label="open full screen" />
+  {:else}
   <label class="field">
     <span class="label">key</span>
     <select class="select" bind:value={host.keyId}>
@@ -134,6 +152,12 @@
     </select>
   </label>
   <Checkbox bind:checked={host.useAgent} label="try keys from the SSH agent (OpenSSH agent or Pageant)" />
+  <label class="field">
+    <span class="label">run after connect</span>
+    <input class="input" bind:value={host.startupCommand} placeholder="tmux attach || tmux new" spellcheck="false" />
+    <span class="hint">Typed into the shell once it opens, also after an automatic reconnect.</span>
+  </label>
+  {/if}
 
   <h3>connection</h3>
   <label class="field">
@@ -142,6 +166,7 @@
       <option value="">none — connect directly</option>
       {#each jumpOptions as h (h.id)}<option value={h.id}>{h.label || h.address}</option>{/each}
     </select>
+    {#if rdp && host.jumpHostId}<span class="hint">Remote Desktop is tunnelled through this SSH host.</span>{/if}
   </label>
   <label class="field">
     <span class="label">notes</span>
@@ -159,6 +184,29 @@
 </Drawer>
 
 <style>
+  .seg {
+    display: flex;
+    align-self: flex-start;
+    border: 1px solid var(--border-weak);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .seg button {
+    height: 28px;
+    padding: 0 16px;
+    border: 0;
+    border-left: 1px solid var(--border-weak);
+    background: none;
+    color: var(--text-weak);
+    cursor: pointer;
+  }
+  .seg button:first-child {
+    border-left: 0;
+  }
+  .seg button.active {
+    background: var(--bg-strong);
+    color: var(--text-inverted);
+  }
   h3 {
     margin: 8px 0 -4px;
     color: var(--text-strong);

@@ -4,6 +4,7 @@
   import PageHeader from './PageHeader.svelte'
   import Checkbox from './Checkbox.svelte'
   import SyncSettings from './SyncSettings.svelte'
+  import { TERMINAL_THEMES } from '$lib/theme'
 
   const s = $derived(app.settings)
 
@@ -81,6 +82,26 @@
 
   <section>
     <h2>terminal</h2>
+    <div class="themes" role="radiogroup" aria-label="terminal theme">
+      {#each TERMINAL_THEMES as t (t.id)}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={s.terminalTheme === t.id}
+          class={['theme', s.terminalTheme === t.id && 'active']}
+          style:background={t.colors.background}
+          style:color={t.colors.foreground}
+          onclick={() => set('terminalTheme', t.id)}
+        >
+          <span class="theme-name">{t.label}</span>
+          <span class="swatches">
+            {#each [t.colors.red, t.colors.green, t.colors.yellow, t.colors.blue, t.colors.magenta, t.colors.cyan] as c, i (i)}
+              <span style:background={c}></span>
+            {/each}
+          </span>
+        </button>
+      {/each}
+    </div>
     <label class="row">
       <span>font size</span>
       <input class="input narrow" type="number" min="8" max="32" value={s.terminalFontSize}
@@ -113,6 +134,11 @@
       <Checkbox checked={s.cursorBlink} label="blinking cursor" onchange={(v) => set('cursorBlink', v)} />
       <Checkbox checked={s.copyOnSelect} label="copy text when selected" onchange={(v) => set('copyOnSelect', v)} />
       <Checkbox checked={s.rightClickPaste} label="right click copies selection or pastes" onchange={(v) => set('rightClickPaste', v)} />
+      <Checkbox checked={s.pasteProtection} label="ask before pasting several lines into a shell" onchange={(v) => set('pasteProtection', v)} />
+      <Checkbox checked={s.osc52} label="let remote programs (tmux, vim) copy to my clipboard" onchange={(v) => set('osc52', v)} />
+      <Checkbox checked={s.bellNotify} label="notify when a background tab rings the bell" onchange={(v) => set('bellNotify', v)} />
+      <Checkbox checked={s.autoReconnect} label="reconnect automatically when a connection drops" onchange={(v) => set('autoReconnect', v)} />
+      <Checkbox checked={s.restoreTabs} label="reopen my tabs when bawkterm starts" onchange={(v) => set('restoreTabs', v)} />
     </div>
   </section>
 
@@ -126,6 +152,11 @@
     <div class="checks">
       <Checkbox checked={s.sftpShowHidden} label="show hidden files in sftp" onchange={(v) => set('sftpShowHidden', v)} />
     </div>
+    <label class="row">
+      <span>editor for "Edit in editor" (empty = VS Code if installed, else Windows default)</span>
+      <input class="input wide" value={s.editorCommand} placeholder="code" spellcheck="false"
+        onchange={(e) => set('editorCommand', e.currentTarget.value.trim())} />
+    </label>
     <div class="row">
       <span>import hosts and keys from ~/.ssh/config</span>
       <button type="button" class="btn" onclick={importConfig}>Import</button>
@@ -155,6 +186,8 @@
     <dl>
       <dt><span class="kbd">ctrl+shift+p</span></dt><dd>open host / quick connect</dd>
       <dt><span class="kbd">ctrl+shift+s</span></dt><dd>run a snippet in the terminal</dd>
+      <dt><span class="kbd">ctrl+shift+f</span></dt><dd>search terminal output</dd>
+      <dt><span class="kbd">ctrl+= / - / 0</span></dt><dd>zoom terminal text in, out, reset</dd>
       <dt><span class="kbd">ctrl+tab</span></dt><dd>next tab</dd>
       <dt><span class="kbd">ctrl+shift+w</span></dt><dd>close tab</dd>
       <dt><span class="kbd">ctrl+shift+c / v</span></dt><dd>copy / paste in terminal</dd>
@@ -227,6 +260,38 @@
   }
   dd {
     margin: 0;
+  }
+  .themes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .theme {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border-weak);
+    border-radius: var(--radius);
+    text-align: left;
+    cursor: pointer;
+  }
+  .theme.active {
+    outline: 2px solid var(--bg-interactive);
+    outline-offset: 1px;
+  }
+  .theme-name {
+    font-size: 12px;
+  }
+  .swatches {
+    display: flex;
+    gap: 3px;
+  }
+  .swatches span {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
   }
   .version {
     font-size: 12px;

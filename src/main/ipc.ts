@@ -1,12 +1,15 @@
-import { BrowserWindow, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { promises as fsp } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type {
   ConnectTarget,
+  DockerAction,
+  DockerCommand,
   Host,
   Identity,
   IpcResult,
+  LocalState,
   KeyGenRequest,
   KeyImportRequest,
   PromptResponse,
@@ -20,6 +23,8 @@ import { Prompter } from './prompts'
 import { importSshConfig } from './ssh-config'
 import { SftpSessions } from './ssh/sftp'
 import { SyncEngine } from './sync'
+import { DockerSessions } from './docker'
+import { RdpLauncher } from './rdp'
 import { Terminals } from './ssh/terminal'
 import type { Vault } from './vault'
 
@@ -37,6 +42,7 @@ export interface Services {
   sftp: SftpSessions
   prompter: Prompter
   sync: SyncEngine
+  docker: DockerSessions
 }
 
 export function registerIpc(win: BrowserWindow, vault: Vault): Services {
@@ -48,6 +54,8 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   const prompter = new Prompter(send)
   const terminals = new Terminals(vault, prompter, send)
   const sftp = new SftpSessions(vault, prompter, send)
+  const docker = new DockerSessions(vault, prompter, send)
+  const rdp = new RdpLauncher(vault, prompter)
 
   vault.onChange((data) => send('vault:changed', data))
   const sync = new SyncEngine(vault, send)
@@ -184,6 +192,12 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   handle('sync:now', () => sync.syncNow())
   handle('sync:disconnect', () => sync.disconnect())
 
+  handle('session:save', (state: LocalState) =>
+    vault.mutate((d) => {
+      d.local = state
+    })
+  )
+
   handle('knownHosts:remove', (host: string, keyType: string) =>
     vault.mutate((d) => {
       d.knownHosts = d.knownHosts.filter((k) => !(k.host === host && k.keyType === keyType))
@@ -198,8 +212,8 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
 
   handle('import:sshConfig', () => importSshConfig(vault))
 
-  handle('ssh:open', (id: string, target: ConnectTarget, cols: number, rows: number) =>
-    terminals.open(id, target, cols, rows)
+  handle('ssh:open', (id: string, target: ConnectTarget, cols: number, rows: number, command?: string) =>
+    terminals.open(id, target, cols, rows, command)
   )
   handle('ssh:close', (id: string) => terminals.close(id))
   listen('ssh:write', (id: string, data: string) => terminals.write(id, data))
@@ -217,6 +231,17 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   handle('sftp:download', (id: string, paths: string[], dir: string) => sftp.download(id, paths, dir))
   handle('sftp:cancel', (transferId: string) => sftp.cancel(transferId))
   handle('sftp:close', (id: string) => sftp.close(id))
+  handle('sftp:edit', (id: string, path: string) => sftp.editor.open(id, path))
+  handle('sftp:editStop', (id: string, path: string) => sftp.editor.stop(id, path))
+
+  handle('rdp:launch', (hostId: string) => rdp.launch(hostId))
+
+  handle('docker:open', (id: string, target: ConnectTarget) => docker.open(id, target))
+  handle('docker:list', (id: string) => docker.list(id))
+  handle('docker:stats', (id: string) => docker.stats(id))
+  handle('docker:action', (id: string, containerId: string, action: DockerAction) => docker.action(id, containerId, action))
+  handle('docker:command', (id: string, containerId: string, kind: DockerCommand) => docker.command(id, containerId, kind))
+  handle('docker:close', (id: string) => docker.close(id))
 
   handle('local:home', () => localFs.home())
   handle('local:list', (path: string) => localFs.list(path))
@@ -226,15 +251,23 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   handle('local:open', (path: string) => localFs.open(path))
 
   listen('prompt:respond', (id: string, res: PromptResponse | null) => prompter.respond(id, res))
+  listen('window:focus', () => {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  })
   listen('window:minimize', () => win.minimize())
   listen('window:toggleMaximize', () => (win.isMaximized() ? win.unmaximize() : win.maximize()))
   listen('window:close', () => win.close())
   handle('window:isMaximized', () => win.isMaximized())
   win.on('maximize', () => send('window:maximized', true))
   win.on('unmaximize', () => send('window:maximized', false))
+  listen('app:copy', (text: string) => {
+    if (typeof text === 'string' && text.length <= 1024 * 1024) clipboard.writeText(text)
+  })
   listen('app:openExternal', (url: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })
 
-  return { terminals, sftp, prompter, sync }
+  return { terminals, sftp, prompter, sync, docker }
 }

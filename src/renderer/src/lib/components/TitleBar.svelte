@@ -1,11 +1,28 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x'
   import Plus from '@lucide/svelte/icons/plus'
-  import { app, type Tab } from '$lib/state.svelte'
+  import { app, type MenuItem, type Tab } from '$lib/state.svelte'
   import Logo from './Logo.svelte'
 
   function onauxclick(e: MouseEvent, tab: Tab): void {
     if (e.button === 1) app.closeTab(tab.id)
+  }
+
+  function menu(e: MouseEvent, tab: Tab): void {
+    const target = $state.snapshot(tab.target)
+    const host = 'hostId' in target ? app.vault?.hosts.find((h) => h.id === target.hostId) : undefined
+    const name = host?.label || host?.address || tab.title
+    const open: MenuItem[] = []
+    if (tab.kind === 'ssh') open.push({ label: 'Duplicate tab', action: () => app.openTab('ssh', target, tab.title, tab.command) })
+    if (tab.kind !== 'ssh' || tab.command) open.push({ label: 'Open terminal', action: () => app.openTab('ssh', target, name) })
+    if (tab.kind !== 'sftp') open.push({ label: 'Open SFTP', action: () => app.openTab('sftp', target, name) })
+    if (tab.kind !== 'docker') open.push({ label: 'Open Docker', action: () => app.openTab('docker', target, name) })
+    app.openMenu(e, [
+      ...open,
+      'sep',
+      { label: 'Close tab', action: () => app.closeTab(tab.id) },
+      { label: 'Close other tabs', action: () => app.closeOtherTabs(tab.id), disabled: app.tabs.length < 2 }
+    ])
   }
 </script>
 
@@ -25,10 +42,12 @@
         onclick={() => (app.active = tab.id)}
         onkeydown={(e) => e.key === 'Enter' && (app.active = tab.id)}
         onauxclick={(e) => onauxclick(e, tab)}
+        oncontextmenu={(e) => menu(e, tab)}
       >
         <span class={['dot', tab.status]}></span>
         <span class="kind">{tab.kind}</span>
         <span class="title">{tab.title}</span>
+        {#if tab.bell}<span class="mark bell" title="bell">!</span>{:else if tab.activity}<span class="mark" title="new output">•</span>{/if}
         <button
           type="button"
           class="close"
@@ -103,6 +122,13 @@
   .title {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .mark {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .mark.bell {
+    color: var(--warning);
   }
   .close {
     display: grid;

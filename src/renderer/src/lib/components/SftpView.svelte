@@ -1,10 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import Star from '@lucide/svelte/icons/star'
   import type { FileEntry } from '@shared/types'
   import { app, type Tab } from '$lib/state.svelte'
   import { localPath, remotePath } from '$lib/paths'
   import FilePane from './FilePane.svelte'
   import Transfers from './Transfers.svelte'
+  import Edits from './Edits.svelte'
+  import { Reconnector } from '$lib/reconnect.svelte'
 
   let { tab }: { tab: Tab } = $props()
 
@@ -17,13 +20,47 @@
   let remotePane = $state<ReturnType<typeof FilePane>>()
 
   const connected = $derived(tab.status === 'connected')
+  const reconnect = new Reconnector(() => void connect())
+
+  $effect(() => void reconnect.track(tab.status, tab.dropped, tab.message, app.settings.autoReconnect))
+  const target = $derived(tab.target)
+  const host = $derived('hostId' in target ? app.vault?.hosts.find((h) => h.id === target.hostId) : undefined)
+  const pathKey = $derived('hostId' in target ? target.hostId : `adhoc:${target.adhoc.username}@${target.adhoc.address}:${target.adhoc.port}`)
+  const bookmarked = $derived(!!host?.bookmarks.includes(remote))
+
+  $effect(() => app.rememberPath(pathKey, remote))
+  $effect(() => app.rememberPath('local', local))
+
+  const quote = (p: string): string => `'${p.replace(/'/g, `'\\''`)}'`
+
+  function openTerminal(path: string): void {
+    const name = path.split('/').filter(Boolean).pop() ?? '/'
+    app.openTab('ssh', $state.snapshot(tab.target), `${remoteTitle} · ${name}`, `cd ${quote(path)} && exec "\${SHELL:-/bin/sh}" -l`)
+  }
+
+  async function toggleBookmark(): Promise<void> {
+    if (!host) return
+    const bookmarks = bookmarked ? host.bookmarks.filter((b) => b !== remote) : [...host.bookmarks, remote]
+    await api.hosts.save({ ...host, bookmarks }).catch((err) => app.fail(err))
+  }
+
+  function bookmarkMenu(e: MouseEvent): void {
+    if (!host) return
+    app.openMenu(
+      e,
+      host.bookmarks.map((b) => ({ label: b, action: () => (remote = b) }))
+    )
+  }
 
   async function connect(): Promise<void> {
     app.updateTab({ sessionId: tab.id, status: 'connecting' })
     try {
       const res = await api.sftp.open(tab.id, $state.snapshot(tab.target))
       remoteTitle = res.title
-      remote = remote || res.home
+      if (!remote) {
+        const last = app.vault?.local.lastPaths[pathKey]
+        remote = last ? await api.sftp.realpath(tab.id, last).catch(() => res.home) : res.home
+      }
     } catch {
       // status event carries the error
     }
@@ -44,7 +81,7 @@
   }
 
   onMount(() => {
-    void api.local.home().then((home) => (local = local || home))
+    void api.local.home().then((home) => (local = local || app.vault?.local.lastPaths['local'] || home))
     void connect()
     let timer: ReturnType<typeof setTimeout> | undefined
     const stop = api.sftp.onTransfer((info) => {
@@ -58,16 +95,42 @@
     return () => {
       stop()
       clearTimeout(timer)
+      reconnect.dispose()
       void api.sftp.close(tab.id)
     }
   })
 </script>
 
+  {#snippet bookmarkTools()}
+    <button
+      type="button"
+      class="btn small icon ghost"
+      aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this folder'}
+      title={bookmarked ? 'Remove bookmark' : 'Bookmark this folder'}
+      disabled={!connected}
+      onclick={toggleBookmark}
+    >
+      <Star size={14} fill={bookmarked ? 'currentColor' : 'none'} color={bookmarked ? 'var(--warning)' : 'currentColor'} />
+    </button>
+    {#if host?.bookmarks.length}
+      <button type="button" class="btn small ghost" disabled={!connected} onclick={bookmarkMenu}>bookmarks</button>
+    {/if}
+  {/snippet}
+
   {#snippet connectionState()}
     {#if tab.status === 'connecting'}
       <div class="panel">
-        <p class="strong"><span class="dot connecting"></span> connecting to {tab.title}</p>
+        <p class="strong"><span class="dot connecting"></span> {reconnect.state ? `reconnecting (attempt ${reconnect.state.attempt})` : `connecting to ${tab.title}`}</p>
         <p class="muted">{tab.message ?? 'opening sftp channel…'}</p>
+      </div>
+    {:else if reconnect.state}
+      <div class="panel">
+        <p class="strong"><span class="dot connecting"></span> connection lost</p>
+        <p class="muted">retrying in {reconnect.state.seconds}s (attempt {reconnect.state.attempt})</p>
+        <div class="actions">
+          <button type="button" class="btn small strong" onclick={() => reconnect.now()}>Retry now</button>
+          <button type="button" class="btn small ghost" onclick={() => reconnect.stop()}>Stop</button>
+        </div>
       </div>
     {:else if tab.status === 'error' || tab.status === 'closed'}
       <div class="panel">
@@ -114,9 +177,13 @@
       onmkdir={(p) => api.sftp.mkdir(tab.id, p)}
       onrename={(a, b) => api.sftp.rename(tab.id, a, b)}
       onremove={(entries) => api.sftp.remove(tab.id, entries.map((e) => e.path))}
+      onedit={(e) => api.sftp.edit(tab.id, e.path).catch((err) => app.fail(err))}
+      onterminal={openTerminal}
+      tools={host ? bookmarkTools : undefined}
       overlay={connected ? undefined : connectionState}
     />
   </div>
+  <Edits sessionId={tab.id} />
   <Transfers sessionId={tab.id} />
 </div>
 

@@ -4,6 +4,7 @@
   import VaultView from './VaultView.svelte'
   import TerminalView from './TerminalView.svelte'
   import SftpView from './SftpView.svelte'
+  import DockerView from './DockerView.svelte'
   import Palette from './Palette.svelte'
 </script>
 
@@ -19,8 +20,10 @@
       <div class="view" hidden={app.active !== tab.id}>
         {#if tab.kind === 'ssh'}
           <TerminalView {tab} active={app.active === tab.id} />
-        {:else}
+        {:else if tab.kind === 'sftp'}
           <SftpView {tab} />
+        {:else}
+          <DockerView {tab} active={app.active === tab.id} />
         {/if}
       </div>
     {/each}

@@ -69,7 +69,7 @@
 
   const current = $derived(items[index])
 
-  function run(item: Item | undefined, shift: boolean): void {
+  function run(item: Item | undefined, shift: boolean, ctrl = false): void {
     if (!item) return
     app.paletteOpen = false
     if (item.kind === 'snippet') {
@@ -83,7 +83,7 @@
       return
     }
     const sftp = shift
-    const kind = sftp ? 'sftp' : 'ssh'
+    const kind = ctrl ? 'docker' : sftp ? 'sftp' : 'ssh'
     if (item.kind === 'host') app.openHost(kind, item.host.id)
     else if (item.kind === 'adhoc') {
       const t = item.target
@@ -100,7 +100,7 @@
       index = Math.max(index - 1, 0)
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      run(items[index], e.shiftKey)
+      run(items[index], e.shiftKey, e.ctrlKey)
     } else if (e.key === 'Escape') {
       app.paletteOpen = false
     }
@@ -127,14 +127,12 @@
             type="button"
             class:active={i === index}
             onmousemove={() => (index = i)}
-            onclick={(e) => run(item, e.shiftKey)}
+            onclick={(e) => run(item, e.shiftKey, e.ctrlKey)}
           >
             {#if item.kind === 'host'}
               <span class="name">{item.host.label || item.host.address}</span>
               <span class="meta"
-                >{item.host.username ? `${item.host.username}@` : ''}{item.host.address}{item.host.port !== 22
-                  ? `:${item.host.port}`
-                  : ''}</span
+                >{item.host.kind === 'rdp' ? 'rdp · ' : ''}{item.host.username ? `${item.host.username}@` : ''}{item.host.address}</span
               >
             {:else if item.kind === 'adhoc'}
               <span class="name">connect</span>
@@ -164,6 +162,7 @@
       {:else}
         <span><span class="kbd">enter</span> ssh</span>
         <span><span class="kbd">shift+enter</span> sftp</span>
+        <span><span class="kbd">ctrl+enter</span> docker</span>
       {/if}
       <span><span class="kbd">esc</span> close</span>
     </footer>
