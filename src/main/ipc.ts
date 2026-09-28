@@ -74,6 +74,7 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   }
 
   handle('vault:status', () => vault.status())
+  handle('vault:get', () => (vault.unlocked ? vault.get() : null))
   handle('vault:create', (password: string, remember: boolean) => vault.create(password, remember))
   handle('vault:unlock', (password: string, remember: boolean) => vault.unlock(password, remember))
   handle('vault:lock', () => {

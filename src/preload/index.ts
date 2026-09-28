@@ -18,6 +18,7 @@ const api: BawkApi = {
   platform: process.platform,
   vault: {
     status: () => invoke('vault:status'),
+    get: () => invoke('vault:get'),
     create: (password, remember) => invoke('vault:create', password, remember),
     unlock: (password, remember) => invoke('vault:unlock', password, remember),
     lock: () => invoke('vault:lock'),

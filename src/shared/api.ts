@@ -24,6 +24,7 @@ export interface BawkApi {
   platform: string
   vault: {
     status(): Promise<VaultStatus>
+    get(): Promise<VaultData | null>
     create(password: string, remember: boolean): Promise<VaultData>
     unlock(password: string, remember: boolean): Promise<VaultData>
     lock(): Promise<void>

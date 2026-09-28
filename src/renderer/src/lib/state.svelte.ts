@@ -91,7 +91,8 @@ class AppState {
   async init(): Promise<void> {
     this.status = await api.vault.status()
     if (this.status.state === 'unlocked') {
-      this.everUnlocked = true
+      const data = await api.vault.get()
+      if (data) this.setVault(data)
       this.syncStatus = await api.sync.status()
     }
   }
