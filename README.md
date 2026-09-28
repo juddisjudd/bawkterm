@@ -18,6 +18,16 @@ Try it without a real server:
 pnpm test-server  # SSH + SFTP on 127.0.0.1:2222, login test / test
 ```
 
+## Releases
+
+```sh
+pnpm release patch   # or minor, major, or an exact x.y.z
+```
+
+The script refuses a dirty tree or a branch other than `main`. It bumps `package.json`, commits `chore(release): vX.Y.Z`, tags `vX.Y.Z` and pushes both. The tag starts `.github/workflows/release.yml`, which typechecks, builds the NSIS installer on Windows and publishes a GitHub Release with notes generated from the commits since the last tag. A manual run from the Actions tab builds the installer as a 7-day artifact without releasing.
+
+The installer is unsigned, so Windows SmartScreen asks once: **More info → Run anyway**.
+
 ## Features
 
 - **Vault**: one master password encrypts every host, key, password and trusted host key (scrypt N=2^17 → AES-256-GCM, file `%APPDATA%/bawkterm/vault.json`). Optional auto-unlock uses Windows DPAPI. Auto-lock after idle minutes.

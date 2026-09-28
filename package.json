@@ -5,6 +5,10 @@
   "main": "./out/main/index.js",
   "author": "CKH",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juddisjudd/bawkterm.git"
+  },
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
@@ -14,7 +18,8 @@
     "typecheck:web": "svelte-check --tsconfig ./tsconfig.web.json --threshold warning",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "dist": "electron-vite build && electron-builder --win --publish never",
-    "test-server": "node scripts/test-server.cjs"
+    "test-server": "node scripts/test-server.cjs",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "ssh2": "1.17.0"
@@ -39,5 +44,6 @@
     "svelte-check": "4.7.6",
     "typescript": "6.0.3",
     "vite": "7.3.6"
-  }
+  },
+  "packageManager": "pnpm@11.25.0"
 }

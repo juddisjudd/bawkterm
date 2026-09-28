@@ -307,7 +307,10 @@ function connectOne(r: Resolved, ctx: ConnectContext, sock?: Duplex): Promise<Cl
       }
       resolve(client)
     })
-    client.on('error', (err) => fail(friendlyError(err, r)))
+    client.on('error', (err: Error & { level?: string }) => {
+      if (err.level === 'agent') ctx.onProgress?.('SSH agent unavailable, trying other methods')
+      else fail(friendlyError(err, r))
+    })
     client.on('close', () => fail(new Error(`Connection to ${r.address} closed during setup`)))
 
     const settings = ctx.vault.get().settings

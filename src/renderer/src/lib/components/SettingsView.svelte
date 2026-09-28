@@ -161,6 +161,8 @@
       <dt><span class="kbd">ctrl+shift+l</span></dt><dd>lock vault</dd>
     </dl>
   </section>
+
+  <p class="version muted">bawkterm v{__APP_VERSION__}</p>
 </div>
 
 <style>
@@ -225,5 +227,8 @@
   }
   dd {
     margin: 0;
+  }
+  .version {
+    font-size: 12px;
   }
 </style>

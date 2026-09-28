@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
+import { version } from './package.json'
 
 export default defineConfig({
   main: {
@@ -16,6 +17,7 @@ export default defineConfig({
         '$lib': resolve('src/renderer/src/lib')
       }
     },
+    define: { __APP_VERSION__: JSON.stringify(version) },
     plugins: [svelte()]
   }
 })

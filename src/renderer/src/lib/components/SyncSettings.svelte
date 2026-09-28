@@ -24,7 +24,7 @@
       message:
         'Use this on your first device. Run a bawksync server, then enter its address and one of its tokens. A new encryption key is created here and never leaves your devices unencrypted.',
       fields: [
-        { name: 'url', label: 'server address', value: 'https://' },
+        { name: 'url', label: 'server address', value: 'https://sync.bawkbawk.net' },
         { name: 'token', label: 'server token', secret: true }
       ],
       confirmLabel: 'Start syncing'
