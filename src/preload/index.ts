@@ -98,8 +98,14 @@ const api: BawkApi = {
     onCancel: (cb) => on('prompt:cancel', cb),
     respond: (id, res) => ipcRenderer.send('prompt:respond', id, res)
   },
+  win: {
+    minimize: () => ipcRenderer.send('window:minimize'),
+    toggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
+    close: () => ipcRenderer.send('window:close'),
+    isMaximized: () => invoke('window:isMaximized'),
+    onMaximized: (cb) => on('window:maximized', cb)
+  },
   app: {
-    setTitleBar: (background, foreground) => ipcRenderer.send('app:titleBar', background, foreground),
     openExternal: (url) => ipcRenderer.send('app:openExternal', url),
     pathForFile: (file) => webUtils.getPathForFile(file)
   }

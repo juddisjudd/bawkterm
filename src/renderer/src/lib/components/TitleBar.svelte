@@ -55,7 +55,7 @@
     display: flex;
     align-items: stretch;
     height: var(--titlebar);
-    padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 140px)));
+    padding-right: var(--controls-width);
     border-bottom: 1px solid var(--border-weak);
     background: var(--bg);
     -webkit-app-region: drag;

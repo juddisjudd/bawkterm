@@ -104,8 +104,14 @@ export interface BawkApi {
     onCancel(cb: (id: string) => void): Unsubscribe
     respond(id: string, res: PromptResponse | null): void
   }
+  win: {
+    minimize(): void
+    toggleMaximize(): void
+    close(): void
+    isMaximized(): Promise<boolean>
+    onMaximized(cb: (maximized: boolean) => void): Unsubscribe
+  }
   app: {
-    setTitleBar(background: string, foreground: string): void
     openExternal(url: string): void
     pathForFile(file: File): string
   }

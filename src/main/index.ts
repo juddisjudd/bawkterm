@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { registerIpc, type Services } from './ipc'
 import { Vault } from './vault'
 
-const TITLEBAR_HEIGHT = 40
 if (process.env.BAWKTERM_DATA_DIR) app.setPath('userData', process.env.BAWKTERM_DATA_DIR)
 let services: Services | undefined
 
@@ -18,8 +17,6 @@ function createWindow(vault: Vault): BrowserWindow {
     title: 'bawkterm',
     icon: app.isPackaged ? undefined : join(app.getAppPath(), 'build/icon.ico'),
     titleBarStyle: 'hidden',
-    titleBarOverlay:
-      process.platform === 'darwin' ? true : { color: '#141010', symbolColor: '#b8b2b2', height: TITLEBAR_HEIGHT },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

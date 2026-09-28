@@ -226,10 +226,12 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   handle('local:open', (path: string) => localFs.open(path))
 
   listen('prompt:respond', (id: string, res: PromptResponse | null) => prompter.respond(id, res))
-  listen('app:titleBar', (background: string, foreground: string) => {
-    if (process.platform === 'darwin' || !/^#[0-9a-f]{6}$/i.test(background) || !/^#[0-9a-f]{6}$/i.test(foreground)) return
-    win.setTitleBarOverlay({ color: background, symbolColor: foreground })
-  })
+  listen('window:minimize', () => win.minimize())
+  listen('window:toggleMaximize', () => (win.isMaximized() ? win.unmaximize() : win.maximize()))
+  listen('window:close', () => win.close())
+  handle('window:isMaximized', () => win.isMaximized())
+  win.on('maximize', () => send('window:maximized', true))
+  win.on('unmaximize', () => send('window:maximized', false))
   listen('app:openExternal', (url: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })

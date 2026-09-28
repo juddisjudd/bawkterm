@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { app } from '$lib/state.svelte'
-  import { cssHex } from '$lib/theme'
   import LockScreen from '$lib/components/LockScreen.svelte'
   import Shell from '$lib/components/Shell.svelte'
   import Modals from '$lib/components/Modals.svelte'
   import Toasts from '$lib/components/Toasts.svelte'
   import ContextMenu from '$lib/components/ContextMenu.svelte'
+  import WindowControls from '$lib/components/WindowControls.svelte'
 
   let lastActivity = Date.now()
 
@@ -21,7 +21,6 @@
 
   $effect(() => {
     document.documentElement.dataset.theme = app.theme
-    window.api.app.setTitleBar(cssHex('--bg'), cssHex('--text'))
   })
 
   function onkeydown(e: KeyboardEvent): void {
@@ -58,6 +57,10 @@
   {#if app.status.state !== 'unlocked'}
     <LockScreen />
   {/if}
+{/if}
+
+{#if window.api.platform !== 'darwin'}
+  <WindowControls />
 {/if}
 
 <Modals />

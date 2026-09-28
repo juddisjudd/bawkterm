@@ -52,12 +52,3 @@ export const terminalThemes: Record<'dark' | 'light', ITheme> = {
     brightWhite: '#b3adad'
   }
 }
-
-export function cssHex(name: string): string {
-  const probe = document.createElement('span')
-  probe.style.color = `var(${name})`
-  document.body.append(probe)
-  const rgb = getComputedStyle(probe).color.match(/\d+(\.\d+)?/g) ?? ['0', '0', '0']
-  probe.remove()
-  return '#' + rgb.slice(0, 3).map((v) => Math.round(Number(v)).toString(16).padStart(2, '0')).join('')
-}
