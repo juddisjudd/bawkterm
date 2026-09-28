@@ -1,10 +1,25 @@
-import { app, BrowserWindow, Menu, shell } from 'electron'
-import { join } from 'node:path'
+import { app, BrowserWindow, Menu, net, protocol, shell } from 'electron'
+import { join, normalize, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { registerIpc, type Services } from './ipc'
 import { Vault } from './vault'
 
 if (process.env.BAWKTERM_DATA_DIR) app.setPath('userData', process.env.BAWKTERM_DATA_DIR)
 let services: Services | undefined
+
+// The renderer is served from this https origin (answered locally, never fetched) so passkeys have a valid RP ID.
+const APP_HOST = 'bawkterm.bawkbawk.net'
+
+function serveRenderer(): void {
+  const root = normalize(join(__dirname, '../renderer'))
+  protocol.handle('https', (request) => {
+    const url = new URL(request.url)
+    if (url.host !== APP_HOST) return new Response('blocked', { status: 403 })
+    const file = normalize(join(root, decodeURIComponent(url.pathname)))
+    if (file !== root && !file.startsWith(root + sep)) return new Response('not found', { status: 404 })
+    return net.fetch(pathToFileURL(file === root ? join(root, 'index.html') : file).toString())
+  })
+}
 
 function createWindow(vault: Vault): BrowserWindow {
   const win = new BrowserWindow({
@@ -47,7 +62,7 @@ function createWindow(vault: Vault): BrowserWindow {
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadURL(`https://${APP_HOST}/index.html`)
   }
 
   services = registerIpc(win, vault)
@@ -73,6 +88,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     app.setAppUserModelId('dev.bawkterm')
     Menu.setApplicationMenu(null)
+    if (app.isPackaged || !process.env['ELECTRON_RENDERER_URL']) serveRenderer()
     const vault = new Vault()
     await vault.tryAutoUnlock()
     createWindow(vault)

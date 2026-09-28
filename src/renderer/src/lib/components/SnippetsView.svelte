@@ -77,7 +77,6 @@
 
 <style>
   .page {
-    max-width: 1080px;
     padding: 32px 40px 64px;
   }
   ul {

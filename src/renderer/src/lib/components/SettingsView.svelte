@@ -5,6 +5,7 @@
   import Checkbox from './Checkbox.svelte'
   import SyncSettings from './SyncSettings.svelte'
   import { TERMINAL_THEMES } from '$lib/theme'
+  import { enrollPasskey } from '$lib/passkey'
 
   const s = $derived(app.settings)
 
@@ -15,6 +16,30 @@
   function num(e: Event, min: number, max: number): number | null {
     const n = Number((e.currentTarget as HTMLInputElement).value)
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null
+  }
+
+  const methods = $derived(app.unlockStatus)
+  let working = $state<'hello' | 'passkey' | null>(null)
+
+  async function toggleMethod(kind: 'hello' | 'passkey', on: boolean): Promise<void> {
+    working = kind
+    try {
+      if (kind === 'hello') {
+        await (on ? window.api.unlock.enableHello() : window.api.unlock.disableHello())
+      } else if (on) {
+        const { enrollment, output } = await enrollPasskey()
+        await window.api.unlock.enablePasskey(enrollment, output)
+      } else {
+        await window.api.unlock.disablePasskey()
+      }
+      await app.refreshUnlock()
+      const name = kind === 'hello' ? 'Windows Hello' : 'Passkey'
+      app.toast(on ? `${name} unlock is on` : `${name} unlock is off${kind === 'passkey' ? '. The passkey stays on your device until you delete it there.' : ''}`)
+    } catch (err) {
+      app.fail(err)
+    } finally {
+      working = null
+    }
   }
 
   async function setRemember(on: boolean): Promise<void> {
@@ -66,7 +91,7 @@
 <div class="page">
   <PageHeader title="settings" subtitle="Saved inside the encrypted vault." />
 
-  <SyncSettings />
+  <div class="sections">
 
   <section>
     <h2>appearance</h2>
@@ -142,6 +167,8 @@
     </div>
   </section>
 
+  <SyncSettings />
+
   <section>
     <h2>connections</h2>
     <label class="row">
@@ -153,8 +180,8 @@
       <Checkbox checked={s.sftpShowHidden} label="show hidden files in sftp" onchange={(v) => set('sftpShowHidden', v)} />
     </div>
     <label class="row">
-      <span>editor for "Edit in editor" (empty = VS Code if installed, else Windows default)</span>
-      <input class="input wide" value={s.editorCommand} placeholder="code" spellcheck="false"
+      <span>editor for "Edit in editor"</span>
+      <input class="input wide" value={s.editorCommand} placeholder="auto (VS Code if installed)" spellcheck="false"
         onchange={(e) => set('editorCommand', e.currentTarget.value.trim())} />
     </label>
     <div class="row">
@@ -179,6 +206,37 @@
       <span>master password</span>
       <button type="button" class="btn" onclick={changePassword}>Change…</button>
     </div>
+    <div class="row">
+      <span class="stack">
+        <span>Windows Hello (PIN, fingerprint or face)</span>
+        {#if !methods}
+          <span class="hint">checking…</span>
+        {:else if !methods.hello.supported && !methods.hello.enabled}
+          <span class="hint">Set up Windows Hello first: Settings → Accounts → Sign-in options</span>
+        {/if}
+      </span>
+      {#if methods?.hello.enabled}
+        <button type="button" class="btn ghost danger" disabled={!!working} onclick={() => toggleMethod('hello', false)}>Turn off</button>
+      {:else}
+        <button type="button" class="btn" disabled={!!working || !methods?.hello.supported} onclick={() => toggleMethod('hello', true)}>
+          {working === 'hello' ? 'waiting…' : 'Turn on'}
+        </button>
+      {/if}
+    </div>
+    <div class="row">
+      <span class="stack">
+        <span>passkey</span>
+        <span class="hint">Your phone (scan a QR code, Bluetooth on), a security key, or this PC</span>
+      </span>
+      {#if methods?.passkey.enabled}
+        <button type="button" class="btn ghost danger" disabled={!!working} onclick={() => toggleMethod('passkey', false)}>Turn off</button>
+      {:else}
+        <button type="button" class="btn" disabled={!!working} onclick={() => toggleMethod('passkey', true)}>
+          {working === 'passkey' ? 'waiting…' : 'Set up…'}
+        </button>
+      {/if}
+    </div>
+    <p class="hint note">Your master password always works too. These only add faster ways to unlock.</p>
   </section>
 
   <section>
@@ -195,13 +253,21 @@
     </dl>
   </section>
 
+  </div>
+
   <p class="version muted">bawkterm v{__APP_VERSION__}</p>
 </div>
 
 <style>
   .page {
-    max-width: 760px;
     padding: 32px 40px 64px;
+  }
+  .sections {
+    columns: 2 460px;
+    column-gap: 56px;
+  }
+  .sections > :global(section) {
+    break-inside: avoid;
   }
   section {
     margin-bottom: 28px;
@@ -217,12 +283,25 @@
     justify-content: space-between;
     gap: 16px;
     min-height: 40px;
+    padding: 4px 0;
+  }
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .hint {
+    color: var(--text-weak);
+    font-size: 12px;
+  }
+  .note {
+    margin-top: 8px;
   }
   .narrow {
     width: 110px;
   }
   .wide {
-    width: 320px;
+    width: min(320px, 60%);
   }
   .checks {
     display: flex;

@@ -30,7 +30,8 @@ The installer is unsigned, so Windows SmartScreen asks once: **More info → Run
 
 ## Features
 
-- **Vault**: one master password encrypts every host, key, password and trusted host key (scrypt N=2^17 → AES-256-GCM, file `%APPDATA%/bawkterm/vault.json`). Optional auto-unlock uses Windows DPAPI. Auto-lock after idle minutes.
+- **Vault**: a random vault key (AES-256-GCM) encrypts every host, key, password and trusted host key in `%APPDATA%/bawkterm/vault.json`. The master password (scrypt N=2^17) holds a wrapped copy of that key, so changing it never re-keys the vault. Optional auto-unlock uses Windows DPAPI. Auto-lock after idle minutes.
+- **Windows Hello and passkey unlock**: extra ways to open the vault, each with its own wrapped copy of the vault key. Windows Hello uses a TPM-backed Hello key whose deterministic signature derives the unwrapping key. Passkeys (phone via QR, security key, or this PC) use the WebAuthn PRF extension. The app is served from `https://bawkterm.bawkbawk.net` (answered locally, never fetched) so passkeys have a valid RP ID; dev builds use `localhost`, so passkeys set up in dev do not work in the installed app.
 - **SSH**: xterm.js tabs with WebGL rendering, flow control, jump hosts (chained), agent auth (OpenSSH agent or Pageant), keyboard-interactive, password and key prompts with "save to vault".
 - **Terminal comforts**: auto-reconnect with backoff when a connection drops (terminal, SFTP and Docker tabs; edits saved while offline upload once back), a per-host command to run after connect, a prompt before multi-line pastes (unless the shell uses bracketed paste), scrollback search, per-tab zoom, OSC 52 copy from remote tmux/vim (write only), background-tab activity (`•`) and bell (`!`) markers with a notification, 12 terminal themes, and tabs reopened on launch.
 - **Host keys**: trust-on-first-use with SHA256 fingerprints; a changed key blocks the connection until you approve it.

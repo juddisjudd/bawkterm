@@ -26,6 +26,15 @@ const api: BawkApi = {
     changePassword: (current, next) => invoke('vault:changePassword', current, next),
     onChanged: (cb) => on('vault:changed', cb)
   },
+  unlock: {
+    status: () => invoke('unlock:status'),
+    hello: () => invoke('unlock:hello'),
+    enableHello: () => invoke('unlock:enableHello'),
+    disableHello: () => invoke('unlock:disableHello'),
+    passkey: (prfOutput) => invoke('unlock:passkey', prfOutput),
+    enablePasskey: (enrollment, prfOutput) => invoke('unlock:enablePasskey', enrollment, prfOutput),
+    disablePasskey: () => invoke('unlock:disablePasskey')
+  },
   hosts: {
     save: (host) => invoke('hosts:save', host),
     remove: (id) => invoke('hosts:remove', id)

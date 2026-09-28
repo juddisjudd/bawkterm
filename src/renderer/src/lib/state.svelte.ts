@@ -13,7 +13,8 @@ import type {
   TransferInfo,
   VaultData,
   VaultStatus,
-  LocalState
+  LocalState,
+  UnlockStatus
 } from '@shared/types'
 
 export type Section = 'hosts' | 'keychain' | 'snippets' | 'known' | 'settings'
@@ -78,6 +79,7 @@ class AppState {
   transfers = $state<TransferInfo[]>([])
   edits = $state<EditInfo[]>([])
   syncStatus = $state<SyncStatus>({ phase: 'off' })
+  unlockStatus = $state<UnlockStatus | null>(null)
   systemDark = $state(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   theme = $derived<'dark' | 'light'>(
@@ -148,6 +150,7 @@ class AppState {
 
   async init(): Promise<void> {
     this.status = await api.vault.status()
+    void this.refreshUnlock()
     if (this.status.state === 'unlocked') {
       const data = await api.vault.get()
       if (data) this.setVault(data)
@@ -174,6 +177,10 @@ class AppState {
       this.paletteOpen = false
       void this.refreshStatus()
     }
+  }
+
+  async refreshUnlock(): Promise<void> {
+    this.unlockStatus = await api.unlock.status().catch(() => null)
   }
 
   async refreshStatus(): Promise<void> {

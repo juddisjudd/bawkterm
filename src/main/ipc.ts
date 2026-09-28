@@ -10,6 +10,7 @@ import type {
   Identity,
   IpcResult,
   LocalState,
+  PasskeyEnrollment,
   KeyGenRequest,
   KeyImportRequest,
   PromptResponse,
@@ -25,6 +26,7 @@ import { SftpSessions } from './ssh/sftp'
 import { SyncEngine } from './sync'
 import { DockerSessions } from './docker'
 import { RdpLauncher } from './rdp'
+import { UnlockMethods } from './unlock'
 import { Terminals } from './ssh/terminal'
 import type { Vault } from './vault'
 
@@ -56,6 +58,7 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   const sftp = new SftpSessions(vault, prompter, send)
   const docker = new DockerSessions(vault, prompter, send)
   const rdp = new RdpLauncher(vault, prompter)
+  const unlock = new UnlockMethods(vault)
 
   vault.onChange((data) => send('vault:changed', data))
   const sync = new SyncEngine(vault, send)
@@ -93,6 +96,13 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
     await vault.setRemember(on)
     return vault.status()
   })
+  handle('unlock:status', () => unlock.status())
+  handle('unlock:hello', () => unlock.unlockWithHello())
+  handle('unlock:enableHello', () => unlock.enableHello())
+  handle('unlock:disableHello', () => unlock.disableHello())
+  handle('unlock:passkey', (prfOutput: string) => unlock.unlockWithPasskey(prfOutput))
+  handle('unlock:enablePasskey', (enrollment: PasskeyEnrollment, prfOutput: string) => unlock.enablePasskey(enrollment, prfOutput))
+  handle('unlock:disablePasskey', () => unlock.disablePasskey())
   handle('vault:changePassword', (current: string, next: string) => vault.changePassword(current, next))
 
   handle('hosts:save', (host: Host) =>

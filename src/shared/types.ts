@@ -134,6 +134,18 @@ export interface LocalState {
   lastPaths: Record<string, string>
 }
 
+export interface PasskeyEnrollment {
+  credentialId: string
+  salt: string
+  rpId: string
+  transports: string[]
+}
+
+export interface UnlockStatus {
+  hello: { supported: boolean; enabled: boolean }
+  passkey: ({ enabled: true } & PasskeyEnrollment) | { enabled: false }
+}
+
 export type VaultState = 'none' | 'locked' | 'unlocked'
 
 export interface VaultStatus {

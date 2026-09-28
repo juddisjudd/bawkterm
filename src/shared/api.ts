@@ -21,7 +21,9 @@ import type {
   TransferInfo,
   VaultData,
   VaultStatus,
-  LocalState
+  LocalState,
+  PasskeyEnrollment,
+  UnlockStatus
 } from './types'
 
 type Unsubscribe = () => void
@@ -37,6 +39,15 @@ export interface BawkApi {
     setRemember(on: boolean): Promise<VaultStatus>
     changePassword(current: string, next: string): Promise<void>
     onChanged(cb: (data: VaultData | null) => void): Unsubscribe
+  }
+  unlock: {
+    status(): Promise<UnlockStatus>
+    hello(): Promise<VaultData>
+    enableHello(): Promise<void>
+    disableHello(): Promise<void>
+    passkey(prfOutput: string): Promise<VaultData>
+    enablePasskey(enrollment: PasskeyEnrollment, prfOutput: string): Promise<void>
+    disablePasskey(): Promise<void>
   }
   hosts: {
     save(host: Host): Promise<Host>
