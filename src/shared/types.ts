@@ -276,6 +276,7 @@ export interface TransferInfo {
   total: number
   files: number
   filesDone: number
+  scanning?: boolean
   state: TransferState
   error?: string
   startedAt: number

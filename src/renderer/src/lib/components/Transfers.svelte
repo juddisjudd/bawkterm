@@ -21,7 +21,7 @@
       case 'queued':
         return 'queued'
       case 'active':
-        return rate(t)
+        return t.scanning ? 'scanning' : rate(t)
       case 'done':
         return 'done'
       case 'cancelled':

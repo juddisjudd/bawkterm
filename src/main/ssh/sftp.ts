@@ -15,6 +15,7 @@ const TEXT_MAX = 5 * 1024 * 1024
 const MAX_DEPTH = 64
 const BOM = Buffer.from([0xef, 0xbb, 0xbf])
 const PARALLEL = 32
+const FILES_AT_ONCE = 8
 const S_IFMT = 0o170000
 const S_IFDIR = 0o040000
 const S_IFLNK = 0o120000
@@ -56,28 +57,42 @@ interface Planned {
 const isDir = (mode: number): boolean => (mode & S_IFMT) === S_IFDIR
 const isLink = (mode: number): boolean => (mode & S_IFMT) === S_IFLNK
 
-async function pump(size: number, work: (pos: number, len: number) => Promise<void>, job: Job): Promise<void> {
-  let next = 0
+async function parallel(count: number, job: Job, take: () => (() => Promise<void>) | undefined): Promise<void> {
   let failed = false
   const worker = async (): Promise<void> => {
     try {
-      while (!failed && next < size) {
+      for (let task = take(); task && !failed; task = take()) {
         if (job.cancelled) throw new CancelledError()
-        const pos = next
-        const len = Math.min(CHUNK, size - pos)
-        next += len
-        await work(pos, len)
+        await task()
       }
     } catch (err) {
       failed = true
       throw err
     }
   }
-  const results = await Promise.allSettled(
-    Array.from({ length: Math.min(PARALLEL, Math.ceil(size / CHUNK)) }, worker)
-  )
+  const results = await Promise.allSettled(Array.from({ length: count }, worker))
   const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
   if (rejected) throw rejected.reason
+}
+
+function pump(size: number, work: (pos: number, len: number) => Promise<void>, job: Job): Promise<void> {
+  let next = 0
+  return parallel(Math.min(PARALLEL, Math.ceil(size / CHUNK)), job, () => {
+    if (next >= size) return undefined
+    const pos = next
+    const len = Math.min(CHUNK, size - pos)
+    next += len
+    return () => work(pos, len)
+  })
+}
+
+function each<T>(items: T[], work: (item: T) => Promise<void>, job: Job): Promise<void> {
+  let next = 0
+  return parallel(Math.min(FILES_AT_ONCE, items.length), job, () => {
+    if (next >= items.length) return undefined
+    const item = items[next++]
+    return () => work(item)
+  })
 }
 
 export class SftpSessions {
@@ -392,6 +407,12 @@ export class SftpSessions {
     this.send('sftp:transfer', { ...job.info })
   }
 
+  private scanned(job: Job): void {
+    job.info.scanning = false
+    job.info.startedAt = Date.now()
+    this.emit(job, true)
+  }
+
   private progress(job: Job, bytes: number): void {
     job.info.bytes += bytes
     this.emit(job)
@@ -413,28 +434,48 @@ export class SftpSessions {
   }
 
   // every local path is checked to stay inside dest; linked folders below the top level are skipped to avoid loops
-  private async planRemote(sftp: SFTPWrapper, src: string, dest: string): Promise<Planned> {
+  private async planRemote(sftp: SFTPWrapper, src: string, dest: string, job: Job): Promise<Planned> {
     const plan: Planned = { dirs: [], files: [] }
-    const walk = async (s: string, d: string, depth: number): Promise<void> => {
-      if (!isInside(dest, d)) throw new Error(`Refusing to write outside ${dest}`)
-      let st = await call<Stats>((cb) => (depth === 0 ? sftp.stat(s, cb) : sftp.lstat(s, cb)))
-      if (isLink(st.mode)) {
-        st = await call<Stats>((cb) => sftp.stat(s, cb))
-        if (isDir(st.mode)) return
-      }
-      if (!isDir(st.mode)) {
-        if ((st.mode & S_IFMT) === S_IFREG) plan.files.push({ src: s, dest: d, size: st.size })
-        return
-      }
-      if (depth >= MAX_DEPTH) throw new Error(`Folders nested deeper than ${MAX_DEPTH} levels are not downloaded`)
-      plan.dirs.push(d)
-      const items = await call<{ filename: string }[]>((cb) => sftp.readdir(s, cb))
-      for (const item of items) {
-        if (item.filename === '.' || item.filename === '..') continue
-        await walk(posix.join(s, item.filename), join(d, localName(item.filename)), depth + 1)
-      }
+    const addFile = (s: string, d: string, size: number): void => {
+      plan.files.push({ src: s, dest: d, size })
+      job.info.files++
+      job.info.total += size
+      this.emit(job)
     }
-    await walk(src, dest, 0)
+    const top = await call<Stats>((cb) => sftp.stat(src, cb))
+    if (!isDir(top.mode)) {
+      if ((top.mode & S_IFMT) === S_IFREG) addFile(src, dest, top.size)
+      return plan
+    }
+    let level = [{ s: src, d: dest }]
+    for (let depth = 0; level.length; depth++) {
+      if (depth >= MAX_DEPTH) throw new Error(`Folders nested deeper than ${MAX_DEPTH} levels are not downloaded`)
+      const below: typeof level = []
+      await each(
+        level,
+        async ({ s, d }) => {
+          plan.dirs.push(d)
+          const items = await call<{ filename: string; attrs: Stats }[]>((cb) => sftp.readdir(s, cb))
+          await Promise.all(
+            items.map(async ({ filename, attrs }) => {
+              if (filename === '.' || filename === '..') return
+              const from = posix.join(s, filename)
+              const to = join(d, localName(filename))
+              if (!isInside(dest, to)) throw new Error(`Refusing to write outside ${dest}`)
+              let st: Stats | null = attrs
+              if (isLink(st.mode)) {
+                st = await call<Stats>((cb) => sftp.stat(from, cb)).catch(() => null)
+                if (!st || isDir(st.mode)) return
+              }
+              if (isDir(st.mode)) below.push({ s: from, d: to })
+              else if ((st.mode & S_IFMT) === S_IFREG) addFile(from, to, st.size)
+            })
+          )
+        },
+        job
+      )
+      level = below
+    }
     return plan
   }
 
@@ -446,11 +487,12 @@ export class SftpSessions {
       (p) => call<Stats>((cb) => sftp.stat(p, cb)).then((s) => (isDir(s.mode) ? 'dir' : 'file'), () => null),
       posix
     )
+    job.info.scanning = true
     this.emit(job, true)
     const plan = await this.planLocal(job.info.source, job.info.dest)
     job.info.total = plan.files.reduce((n, f) => n + f.size, 0)
     job.info.files = plan.files.length
-    this.emit(job, true)
+    this.scanned(job)
 
     for (const dir of plan.dirs) {
       const exists = await call<Stats>((cb) => sftp.stat(dir, cb)).then(
@@ -459,11 +501,14 @@ export class SftpSessions {
       )
       if (!exists) await call((cb) => sftp.mkdir(dir, cb))
     }
-    for (const file of plan.files) {
-      if (job.cancelled) throw new CancelledError()
-      await this.uploadFile(sftp, file.src, file.dest, job)
-      job.info.filesDone++
-    }
+    await each(
+      plan.files,
+      async (file) => {
+        await this.uploadFile(sftp, file.src, file.dest, job)
+        job.info.filesDone++
+      },
+      job
+    )
   }
 
   private async uploadFile(sftp: SFTPWrapper, src: string, dest: string, job: Job): Promise<void> {
@@ -509,18 +554,20 @@ export class SftpSessions {
       (p) => fsp.stat(p).then((s) => (s.isDirectory() ? 'dir' : 'file'), () => null),
       path as unknown as typeof posix
     )
+    job.info.scanning = true
     this.emit(job, true)
-    const plan = await this.planRemote(sftp, job.info.source, job.info.dest)
-    job.info.total = plan.files.reduce((n, f) => n + f.size, 0)
-    job.info.files = plan.files.length
-    this.emit(job, true)
+    const plan = await this.planRemote(sftp, job.info.source, job.info.dest, job)
+    this.scanned(job)
 
     for (const dir of plan.dirs) await fsp.mkdir(dir, { recursive: true })
-    for (const file of plan.files) {
-      if (job.cancelled) throw new CancelledError()
-      await this.downloadFile(sftp, file.src, file.dest, job)
-      job.info.filesDone++
-    }
+    await each(
+      plan.files,
+      async (file) => {
+        await this.downloadFile(sftp, file.src, file.dest, job)
+        job.info.filesDone++
+      },
+      job
+    )
   }
 
   private async downloadFile(sftp: SFTPWrapper, src: string, dest: string, job: Job): Promise<void> {
