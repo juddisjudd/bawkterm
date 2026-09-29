@@ -6,6 +6,8 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 
 > Status: a personal project. Expect rough edges.
 
+![bawkterm: saved hosts grouped by folder, with SSH, SFTP, Docker and editor tabs open](docs/screenshots/hosts.png)
+
 ## Features
 
 - **SSH terminal**: tabs with WebGL rendering, jump hosts (chained), agent auth (OpenSSH agent or Pageant), keyboard-interactive and key auth, auto-reconnect, a per-host startup command, paste protection, scrollback search, per-tab zoom, 12 themes, tabs reopened on launch.
@@ -17,6 +19,10 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 - **Snippets**: saved commands you run from Ctrl+Shift+S.
 - **Unlock options**: master password, plus optional Windows Hello, a passkey (phone, security key or this PC) or auto-unlock through Windows DPAPI or the Linux keyring.
 - **Sync** through a bawksync server you run yourself ([self-hosting guide](https://github.com/juddisjudd/bawksync/blob/main/docs/Home.md)). Everything is encrypted on your device first.
+
+| SFTP with favorites and folder colors | Built-in editor | Docker over SSH |
+| --- | --- | --- |
+| ![Two-pane SFTP view with a favorites strip and colored folders](docs/screenshots/sftp.png) | ![A shell script open in the built-in editor with syntax highlighting](docs/screenshots/editor.png) | ![Containers grouped by Compose project with shell, logs and restart buttons](docs/screenshots/docker.png) |
 
 ## Install
 
