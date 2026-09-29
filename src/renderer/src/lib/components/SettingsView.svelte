@@ -261,6 +261,7 @@
         <div class="themes" role="radiogroup" aria-label="terminal theme">
           {#each TERMINAL_THEMES as t (t.id)}
             {@const colors = terminalTheme(t.id, app.theme)}
+            {@const words = t.label.split(' ')}
             <button
               type="button"
               role="radio"
@@ -270,7 +271,7 @@
               style:color={colors.foreground}
               onclick={() => set('terminalTheme', t.id)}
             >
-              <span class="theme-name">{t.label}</span>
+              <span class="theme-name">{words.slice(0, -1).join(' ')} <span class="last">{words.at(-1)}<span class="caret" style:background={colors.cursor}></span></span></span>
               <span class="swatches">
                 {#each [colors.red, colors.green, colors.yellow, colors.blue, colors.magenta, colors.cyan] as c, i (i)}
                   <span style:background={c}></span>
@@ -617,6 +618,16 @@
   }
   .theme-name {
     font-size: 12px;
+  }
+  .last {
+    white-space: nowrap;
+  }
+  .caret {
+    display: inline-block;
+    width: 7px;
+    height: 13px;
+    margin-left: 4px;
+    vertical-align: -2px;
   }
   .swatches {
     display: flex;
