@@ -39,9 +39,9 @@ The installer is unsigned, so Windows SmartScreen asks once: **More info → Run
 - **Keychain**: generate ed25519 / RSA / ECDSA keys, import OpenSSH, PEM and PuTTY keys, reusable identities (username + password/key).
 - **Docker** (over SSH): containers per host grouped by Compose project, CPU and memory, start / stop / restart, shell into a container or follow its logs in a terminal tab. Falls back to `sudo -n docker` when the user is not in the docker group.
 - **RDP hosts**: saved and synced with the rest of the vault; opens Windows Remote Desktop already signed in, optionally tunnelled through an SSH jump host.
-- **Edit in editor** (SFTP): opens a remote file in VS Code or the Windows default app and uploads every save; asks before replacing a server copy that changed meanwhile.
+- **Edit in editor** (SFTP): opens a remote file in the built-in editor (a tab with syntax highlighting, search, Ctrl+S to save) or, if chosen in settings, in VS Code, another installed editor or the Windows default app. Asks before replacing a server copy that changed meanwhile.
 - **Snippets**: saved commands; Ctrl+Shift+S runs one in the open terminal (Shift+Enter pastes without running).
-- **Sync** across devices through [bawksync](../bawksync), end-to-end encrypted. Each device keeps its own master password; a one-time sync link carries the key. Newest edit wins per item. Settings stay per device.
+- **Sync** across devices through [bawksync](../bawksync), end-to-end encrypted. Each device keeps its own master password; a one-time sync link carries the key. Newest edit wins per item. Syncs after a change and when the window regains focus, never on a timer. Settings stay per device.
 - **Import** hosts, keys and ProxyJump from `~/.ssh/config`.
 
 ## Shortcuts

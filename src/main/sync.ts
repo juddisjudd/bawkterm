@@ -6,8 +6,8 @@ import type { Vault } from './vault'
 
 const PAGE = 500
 const PUSH_CHUNK = 200
-const INTERVAL_MS = 60_000
-const FOCUS_THROTTLE_MS = 15_000
+const FOCUS_THROTTLE_MS = 60_000
+const RETRY_MS = [30_000, 60_000, 120_000, 300_000]
 const LINK_PREFIX = 'bawksync:'
 
 interface RemoteRecord {
@@ -239,10 +239,13 @@ export class SyncEngine {
   private running: Promise<void> | null = null
   private again = false
   private debounce?: NodeJS.Timeout
-  private interval?: NodeJS.Timeout
+  private retry?: NodeJS.Timeout
+  private active = false
+  private failures = 0
   private phase: SyncPhase = 'off'
   private error?: string
   private lastRun = 0
+  private lastSyncAt?: number
 
   constructor(
     private vault: Vault,
@@ -254,7 +257,11 @@ export class SyncEngine {
 
   status(): SyncStatus {
     const sync = this.vault.unlocked ? this.vault.get().sync : undefined
-    return { phase: sync?.config ? this.phase : 'off', lastSyncAt: sync?.lastSyncAt, error: this.error ?? sync?.lastError }
+    return {
+      phase: sync?.config ? this.phase : 'off',
+      lastSyncAt: this.lastSyncAt ?? sync?.lastSyncAt,
+      error: this.error ?? sync?.lastError
+    }
   }
 
   private emit(phase: SyncPhase, error?: string): void {
@@ -265,14 +272,15 @@ export class SyncEngine {
 
   private onVaultChange(data: VaultData | null): void {
     if (!data?.sync.config) {
-      clearInterval(this.interval)
       clearTimeout(this.debounce)
-      this.interval = undefined
+      clearTimeout(this.retry)
+      this.active = false
+      this.failures = 0
       if (this.phase !== 'off') this.emit('off')
       return
     }
-    if (!this.interval) {
-      this.interval = setInterval(() => this.schedule(0), INTERVAL_MS)
+    if (!this.active) {
+      this.active = true
       if (this.phase === 'off') this.phase = 'idle'
       this.schedule(300)
     } else if (pendingChanges(data).length) {
@@ -280,8 +288,9 @@ export class SyncEngine {
     }
   }
 
+  // the server cannot notify us, so returning to the window is when other devices' changes get pulled
   poke(): void {
-    if (Date.now() - this.lastRun > FOCUS_THROTTLE_MS) this.schedule(0)
+    if (this.active && Date.now() - this.lastRun > FOCUS_THROTTLE_MS) this.schedule(0)
   }
 
   private schedule(ms: number): void {
@@ -330,23 +339,25 @@ export class SyncEngine {
         if (!page.more) break
       }
 
-      await this.vault.mutate((d) => {
-        if (!sameConfig(d)) return
-        const items = localItems(d)
-        for (const { payload, deleted } of incoming) {
-          const { k: rkey, v, t } = payload
-          if (d.sync.synced[rkey] === t) continue
-          const local = items.get(rkey)
-          if (deleted || v === null) {
-            if (local && local.updatedAt <= t) removeItem(d, rkey)
-            if (!local || local.updatedAt <= t) delete d.sync.synced[rkey]
-          } else if (!local || local.updatedAt <= t) {
-            applyItem(d, rkey, v)
-            d.sync.synced[rkey] = t
+      if (incoming.length || since !== this.vault.get().sync.lastSeq) {
+        await this.vault.mutate((d) => {
+          if (!sameConfig(d)) return
+          const items = localItems(d)
+          for (const { payload, deleted } of incoming) {
+            const { k: rkey, v, t } = payload
+            if (d.sync.synced[rkey] === t) continue
+            const local = items.get(rkey)
+            if (deleted || v === null) {
+              if (local && local.updatedAt <= t) removeItem(d, rkey)
+              if (!local || local.updatedAt <= t) delete d.sync.synced[rkey]
+            } else if (!local || local.updatedAt <= t) {
+              applyItem(d, rkey, v)
+              d.sync.synced[rkey] = t
+            }
           }
-        }
-        d.sync.lastSeq = since
-      })
+          d.sync.lastSeq = since
+        })
+      }
 
       const changes = pendingChanges(this.vault.get())
       const accepted: Change[] = []
@@ -365,24 +376,29 @@ export class SyncEngine {
         for (const [id, c] of byId) (lost.has(id) ? rejected.push(c.rkey) : accepted.push(c))
       }
 
-      await this.vault.mutate((d) => {
-        if (!sameConfig(d)) return
-        for (const c of accepted) {
-          if (c.value === null) delete d.sync.synced[c.rkey]
-          else d.sync.synced[c.rkey] = c.updatedAt
-        }
-        if (rejected.length) {
-          for (const rkey of rejected) delete d.sync.synced[rkey]
-          d.sync.lastSeq = 0
-          this.again = true
-        }
-        d.sync.lastSyncAt = Date.now()
-        d.sync.lastError = undefined
-      })
+      this.lastSyncAt = Date.now()
+      if (accepted.length || rejected.length || this.vault.get().sync.lastError) {
+        await this.vault.mutate((d) => {
+          if (!sameConfig(d)) return
+          for (const c of accepted) {
+            if (c.value === null) delete d.sync.synced[c.rkey]
+            else d.sync.synced[c.rkey] = c.updatedAt
+          }
+          if (rejected.length) {
+            for (const rkey of rejected) delete d.sync.synced[rkey]
+            d.sync.lastSeq = 0
+            this.again = true
+          }
+          d.sync.lastSyncAt = this.lastSyncAt
+          d.sync.lastError = undefined
+        })
+      }
+      this.failures = 0
+      clearTimeout(this.retry)
       this.emit('idle')
     } catch (err) {
       const message = (err as Error).message
-      if (this.vault.unlocked) {
+      if (this.vault.unlocked && this.vault.get().sync.lastError !== message) {
         await this.vault
           .mutate((d) => {
             if (d.sync.config) d.sync.lastError = message
@@ -390,6 +406,11 @@ export class SyncEngine {
           .catch(() => {})
       }
       this.again = false
+      if (this.active) {
+        clearTimeout(this.retry)
+        this.retry = setTimeout(() => this.schedule(0), RETRY_MS[Math.min(this.failures, RETRY_MS.length - 1)])
+        this.failures++
+      }
       this.emit(this.vault.unlocked ? 'error' : 'off', message)
       throw err
     }

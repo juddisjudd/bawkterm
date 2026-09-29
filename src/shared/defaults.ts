@@ -36,6 +36,8 @@ export function emptyVault(): VaultData {
   }
 }
 
+export const DEFAULT_APP_EDITOR = '@default'
+
 export const FOLDER_COLORS: FolderColor[] = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']
 
 export function blankHost(): Host {

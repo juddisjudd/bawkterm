@@ -29,6 +29,7 @@ import { RdpLauncher } from './rdp'
 import { UnlockMethods } from './unlock'
 import { Terminals } from './ssh/terminal'
 import type { Vault } from './vault'
+import { detectEditors, pickEditor } from './editors'
 
 function touch<T extends { updatedAt: number }>(items: T[], match: (item: T) => boolean, change: (item: T) => void): void {
   const now = Date.now()
@@ -241,6 +242,12 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   handle('sftp:download', (id: string, paths: string[], dir: string) => sftp.download(id, paths, dir))
   handle('sftp:cancel', (transferId: string) => sftp.cancel(transferId))
   handle('sftp:close', (id: string) => sftp.close(id))
+  handle('sftp:readText', (id: string, path: string) => sftp.readText(id, path))
+  handle(
+    'sftp:writeText',
+    (id: string, path: string, text: string, bom: boolean, expected: { mtime: number; size: number } | null) =>
+      sftp.writeText(id, path, text, bom, expected)
+  )
   handle('sftp:edit', (id: string, path: string) => sftp.editor.open(id, path))
   handle('sftp:editStop', (id: string, path: string) => sftp.editor.stop(id, path))
 
@@ -275,6 +282,8 @@ export function registerIpc(win: BrowserWindow, vault: Vault): Services {
   listen('app:copy', (text: string) => {
     if (typeof text === 'string' && text.length <= 1024 * 1024) clipboard.writeText(text)
   })
+  handle('app:editors', () => detectEditors())
+  handle('app:pickEditor', () => pickEditor(win))
   listen('app:openExternal', (url: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })

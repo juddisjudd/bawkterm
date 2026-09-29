@@ -1,5 +1,19 @@
 export type HostKind = 'ssh' | 'rdp'
 
+export interface TextFile {
+  text: string
+  bom: boolean
+  mtime: number
+  size: number
+}
+
+export type SaveResult = { conflict: true } | { conflict: false; mtime: number; size: number }
+
+export interface EditorChoice {
+  name: string
+  command: string
+}
+
 export type FolderColor = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple'
 
 export interface Host {

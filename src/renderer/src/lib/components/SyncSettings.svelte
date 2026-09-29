@@ -1,6 +1,9 @@
 <script lang="ts">
   import { app } from '$lib/state.svelte'
   import { ago } from '$lib/format'
+  import CloudCheck from '@lucide/svelte/icons/cloud-check'
+  import CloudAlert from '@lucide/svelte/icons/cloud-alert'
+  import RefreshCw from '@lucide/svelte/icons/refresh-cw'
 
   const config = $derived(app.vault?.sync.config ?? null)
   const status = $derived(app.syncStatus)
@@ -77,14 +80,16 @@
   {:else}
     <div class="state">
       {#if status.phase === 'syncing'}
-        <span class="dot connecting"></span><span>syncing…</span>
+        <RefreshCw size={15} class="spin" /><span>syncing…</span>
       {:else if status.phase === 'error'}
-        <span class="dot error"></span><span class="error selectable">{status.error}</span>
+        <CloudAlert size={15} class="failed" /><span>failed to sync</span>
       {:else}
-        <span class="dot connected"></span><span>synced {ago(status.lastSyncAt)}</span>
+        <CloudCheck size={15} /><span>synced</span><span class="muted">· last synced {ago(status.lastSyncAt)}</span>
       {/if}
     </div>
+    {#if status.phase === 'error' && status.error}<p class="error selectable">{status.error}</p>{/if}
     <p class="muted server selectable">{config.url}</p>
+    <p class="muted hint">Syncs after you change something and when you come back to the window.</p>
     <div class="actions">
       <button type="button" class="btn" disabled={busy || status.phase === 'syncing'} onclick={() => run(() => window.api.sync.now())}>
         Sync now
@@ -114,11 +119,20 @@
     gap: 10px;
     color: var(--text-strong);
   }
+  .state :global(.failed),
   .error {
     color: var(--danger);
   }
+  .error {
+    margin: 6px 0 0 25px;
+    font-size: 12px;
+  }
   .server {
-    margin: 4px 0 14px 17px;
+    margin: 4px 0 0 25px;
+    font-size: 12px;
+  }
+  .hint {
+    margin: 2px 0 14px 25px;
     font-size: 12px;
   }
   .actions {

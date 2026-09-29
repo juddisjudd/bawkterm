@@ -7,6 +7,7 @@ import type {
   PromptField,
   PromptRequest,
   PromptResponse,
+  SavedTab,
   SessionEvent,
   SessionStatus,
   Settings,
@@ -19,7 +20,7 @@ import type {
 } from '@shared/types'
 
 export type Section = 'hosts' | 'keychain' | 'snippets' | 'known' | 'settings'
-export type TabKind = 'ssh' | 'sftp' | 'docker'
+export type TabKind = 'ssh' | 'sftp' | 'docker' | 'edit'
 
 export interface Tab {
   id: string
@@ -31,6 +32,8 @@ export interface Tab {
   command?: string
   dropped?: boolean
   bell?: boolean
+  edit?: { sessionId: string; path: string }
+  dirty?: boolean
 }
 
 export interface Modal {
@@ -67,6 +70,7 @@ const api = window.api
 
 class AppState {
   status = $state<VaultStatus | null>(null)
+  private quitting = false
   vault = $state.raw<VaultData | null>(null)
   settings = $state.raw<Settings>({ ...DEFAULT_SETTINGS })
   everUnlocked = $state(false)
@@ -127,8 +131,9 @@ class AppState {
   private persistTabs(): void {
     if (!this.vault?.settings.restoreTabs) return
     this.updateLocal((l) => {
-      l.tabs = this.tabs.map((t) => ({ kind: t.kind, target: $state.snapshot(t.target), title: t.title, command: t.command }))
-      l.active = this.tabs.findIndex((t) => t.id === this.#active)
+      const kept = this.tabs.filter((t) => t.kind !== 'edit')
+      l.tabs = kept.map((t) => ({ kind: t.kind as SavedTab['kind'], target: $state.snapshot(t.target), title: t.title, command: t.command }))
+      l.active = kept.findIndex((t) => t.id === this.#active)
     })
   }
 
@@ -144,6 +149,16 @@ class AppState {
 
   constructor() {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => (this.systemDark = e.matches))
+    window.addEventListener('beforeunload', (e) => {
+      if (this.quitting || !this.tabs.some((t) => t.dirty)) return
+      e.preventDefault()
+      e.returnValue = false
+      void this.confirm('Unsaved changes', 'Some files have changes that are not saved.', 'Quit without saving').then((ok) => {
+        if (!ok) return
+        this.quitting = true
+        api.win.close()
+      })
+    })
     api.vault.onChanged((data) => this.setVault(data))
     api.ssh.onStatus((e) => this.updateTab(e))
     api.sftp.onStatus((e) => this.updateTab(e))
@@ -204,6 +219,26 @@ class AppState {
     this.active = tab.id
   }
 
+  openEditor(from: Tab, path: string): void {
+    const target = JSON.stringify(from.target)
+    const open = this.tabs.find((t) => t.kind === 'edit' && t.edit?.path === path && JSON.stringify(t.target) === target)
+    if (open) {
+      this.active = open.id
+      return
+    }
+    const title = path.split('/').filter(Boolean).pop() ?? path
+    const tab: Tab = {
+      id: crypto.randomUUID(),
+      kind: 'edit',
+      target: $state.snapshot(from.target),
+      title,
+      status: 'connected',
+      edit: { sessionId: from.id, path }
+    }
+    this.tabs.push(tab)
+    this.active = tab.id
+  }
+
   openHost(kind: TabKind, hostId: string): void {
     const host = this.vault?.hosts.find((h) => h.id === hostId)
     if (!host) return
@@ -217,12 +252,19 @@ class AppState {
     await api.rdp.launch(hostId).catch((err) => this.fail(err))
   }
 
-  closeTab(id: string): void {
+  closeTab(id: string, discard = false): void {
     const i = this.tabs.findIndex((t) => t.id === id)
     if (i < 0) return
+    if (this.tabs[i].dirty && !discard) {
+      const title = this.tabs[i].title
+      void this.confirm('Unsaved changes', `${title} has changes that are not saved.`, 'Close without saving').then(
+        (ok) => ok && this.closeTab(id, true)
+      )
+      return
+    }
     const [tab] = this.tabs.splice(i, 1)
     if (tab.kind === 'ssh') void api.ssh.close(id)
-    else if (tab.kind === 'sftp') void api.sftp.close(id)
+    else if (tab.kind === 'sftp' || tab.kind === 'edit') void api.sftp.close(id)
     else void api.docker.close(id)
     this.transfers = this.transfers.filter((t) => t.sessionId !== id)
     if (this.active === id) this.active = this.tabs[Math.min(i, this.tabs.length - 1)]?.id ?? 'home'

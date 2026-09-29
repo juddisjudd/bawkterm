@@ -1,5 +1,7 @@
 <script lang="ts">
-  import type { CursorStyle, Settings, ThemeSetting } from '@shared/types'
+  import { onMount } from 'svelte'
+  import type { CursorStyle, EditorChoice, Settings, ThemeSetting } from '@shared/types'
+  import { DEFAULT_APP_EDITOR } from '@shared/defaults'
   import { app } from '$lib/state.svelte'
   import PageHeader from './PageHeader.svelte'
   import Checkbox from './Checkbox.svelte'
@@ -16,6 +18,30 @@
   function num(e: Event, min: number, max: number): number | null {
     const n = Number((e.currentTarget as HTMLInputElement).value)
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null
+  }
+
+  let editors = $state<EditorChoice[]>([])
+  let customEditor = $state(false)
+  const editorChoice = $derived(
+    customEditor ||
+      (s.editorCommand !== '' && s.editorCommand !== DEFAULT_APP_EDITOR && !editors.some((e) => e.command === s.editorCommand))
+      ? 'custom'
+      : s.editorCommand
+  )
+
+  onMount(() => {
+    window.api.app.editors().then((list) => (editors = list), () => {})
+  })
+
+  async function browseEditor(): Promise<void> {
+    const command = await window.api.app.pickEditor().catch((err) => app.fail(err))
+    if (command) await set('editorCommand', command)
+  }
+
+  function chooseEditor(value: string): void {
+    customEditor = value === 'custom'
+    if (customEditor) void browseEditor()
+    else void set('editorCommand', value)
   }
 
   const methods = $derived(app.unlockStatus)
@@ -182,9 +208,22 @@
     </div>
     <label class="row">
       <span>editor for "Edit in editor"</span>
-      <input class="input wide" value={s.editorCommand} placeholder="auto (VS Code if installed)" spellcheck="false"
-        onchange={(e) => set('editorCommand', e.currentTarget.value.trim())} />
+      <select class="select wide" value={editorChoice} onchange={(e) => chooseEditor(e.currentTarget.value)}>
+        <option value="">built-in editor</option>
+        {#each editors as editor (editor.command)}
+          <option value={editor.command}>{editor.name}</option>
+        {/each}
+        <option value={DEFAULT_APP_EDITOR}>Windows default app</option>
+        <option value="custom">other program…</option>
+      </select>
     </label>
+    {#if editorChoice === 'custom'}
+      <div class="row">
+        <input class="input" value={s.editorCommand} placeholder='"C:\Program Files\Editor\editor.exe"' spellcheck="false"
+          aria-label="editor command" onchange={(e) => set('editorCommand', e.currentTarget.value.trim())} />
+        <button type="button" class="btn" onclick={browseEditor}>Browse…</button>
+      </div>
+    {/if}
     <div class="row">
       <span>import hosts and keys from ~/.ssh/config</span>
       <button type="button" class="btn" onclick={importConfig}>Import</button>

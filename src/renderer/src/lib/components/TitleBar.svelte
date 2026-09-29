@@ -4,6 +4,14 @@
   import { app, type MenuItem, type Tab } from '$lib/state.svelte'
   import Logo from './Logo.svelte'
 
+  let strip = $state<HTMLElement>()
+
+  $effect(() => {
+    const id = app.active
+    void app.tabs.length
+    strip?.querySelector(`[data-tab="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  })
+
   function onauxclick(e: MouseEvent, tab: Tab): void {
     if (e.button === 1) app.closeTab(tab.id)
   }
@@ -28,13 +36,14 @@
 
 <header class="bar">
   <div class="brand"><Logo /></div>
-  <nav class="tabs">
+  <nav class="tabs" bind:this={strip}>
     <button type="button" class={['tab', 'home', app.active === 'home' && 'active']} onclick={() => (app.active = 'home')}>
       vault
     </button>
     {#each app.tabs as tab (tab.id)}
       <div
         class={['tab', app.active === tab.id && 'active']}
+        data-tab={tab.id}
         role="tab"
         tabindex="0"
         aria-selected={app.active === tab.id}
@@ -47,6 +56,7 @@
         <span class="kind">{tab.kind}</span>
         {#if tab.status !== 'connected'}<span class={['dot', tab.status]} title={tab.status}></span>{/if}
         <span class="title">{tab.title}</span>
+        {#if tab.dirty}<span class="dirty" title="unsaved changes">*</span>{/if}
         {#if tab.bell}<span class="bell" title="bell">!</span>{/if}
         <button
           type="button"
@@ -134,6 +144,11 @@
   .title {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .dirty {
+    margin-left: -4px;
+    color: var(--text-strong);
+    font-weight: 600;
   }
   .bell {
     color: var(--warning);

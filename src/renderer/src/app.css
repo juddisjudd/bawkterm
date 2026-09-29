@@ -28,6 +28,16 @@
   --folder-green: oklch(0.76 0.15 150);
   --folder-blue: oklch(0.72 0.13 250);
   --folder-purple: oklch(0.72 0.14 305);
+  --bg-highlight: oklch(0.31 0.05 105);
+  --syntax-keyword: oklch(0.74 0.13 305);
+  --syntax-string: oklch(0.8 0.13 145);
+  --syntax-number: oklch(0.8 0.12 60);
+  --syntax-comment: oklch(0.68 0.01 25);
+  --syntax-function: oklch(0.76 0.11 250);
+  --syntax-type: oklch(0.84 0.12 90);
+  --syntax-property: oklch(0.8 0.09 200);
+  --syntax-tag: oklch(0.74 0.14 20);
+  --syntax-attribute: oklch(0.82 0.09 50);
   --shadow: 0 16px 48px oklch(0 0 0 / 0.5);
 }
 
@@ -60,6 +70,16 @@
   --folder-green: oklch(0.56 0.14 150);
   --folder-blue: oklch(0.55 0.15 255);
   --folder-purple: oklch(0.52 0.17 305);
+  --bg-highlight: oklch(0.93 0.07 105);
+  --syntax-keyword: oklch(0.5 0.17 305);
+  --syntax-string: oklch(0.5 0.13 145);
+  --syntax-number: oklch(0.52 0.13 55);
+  --syntax-comment: oklch(0.5 0.01 25);
+  --syntax-function: oklch(0.5 0.14 255);
+  --syntax-type: oklch(0.5 0.11 85);
+  --syntax-property: oklch(0.5 0.08 200);
+  --syntax-tag: oklch(0.52 0.17 25);
+  --syntax-attribute: oklch(0.52 0.12 50);
   --shadow: 0 16px 48px oklch(0 0 0 / 0.12);
 }
 

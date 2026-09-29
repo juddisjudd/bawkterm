@@ -96,6 +96,8 @@ const api: BawkApi = {
     close: (sessionId) => invoke('sftp:close', sessionId),
     onStatus: (cb) => on('sftp:status', cb),
     onTransfer: (cb) => on('sftp:transfer', cb),
+    readText: (id, path) => invoke('sftp:readText', id, path),
+    writeText: (id, path, text, bom, expected) => invoke('sftp:writeText', id, path, text, bom, expected),
     edit: (sessionId, remotePath) => invoke('sftp:edit', sessionId, remotePath),
     editStop: (sessionId, remotePath) => invoke('sftp:editStop', sessionId, remotePath),
     onEdit: (cb) => on('sftp:edit', cb)
@@ -136,7 +138,9 @@ const api: BawkApi = {
   app: {
     openExternal: (url) => ipcRenderer.send('app:openExternal', url),
     copy: (text) => ipcRenderer.send('app:copy', text),
-    pathForFile: (file) => webUtils.getPathForFile(file)
+    pathForFile: (file) => webUtils.getPathForFile(file),
+    editors: () => invoke('app:editors'),
+    pickEditor: () => invoke('app:pickEditor')
   }
 }
 

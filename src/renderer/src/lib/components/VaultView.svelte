@@ -5,6 +5,9 @@
   import ShieldCheck from '@lucide/svelte/icons/shield-check'
   import Settings from '@lucide/svelte/icons/settings'
   import Lock from '@lucide/svelte/icons/lock'
+  import CloudCheck from '@lucide/svelte/icons/cloud-check'
+  import CloudAlert from '@lucide/svelte/icons/cloud-alert'
+  import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import { app, type Section } from '$lib/state.svelte'
   import { ago } from '$lib/format'
   import HostsView from './HostsView.svelte'
@@ -21,6 +24,18 @@
     { id: 'known' as Section, label: 'known hosts', icon: ShieldCheck, count: vault.knownHosts.length },
     { id: 'settings' as Section, label: 'settings', icon: Settings, count: null }
   ])
+
+  // quick syncs finish before the spinner is worth showing
+  let syncShown = $state(app.syncStatus.phase)
+  $effect(() => {
+    const phase = app.syncStatus.phase
+    if (phase !== 'syncing') {
+      syncShown = phase
+      return
+    }
+    const timer = setTimeout(() => (syncShown = 'syncing'), 600)
+    return () => clearTimeout(timer)
+  })
 </script>
 
 <div class="vault">
@@ -43,11 +58,19 @@
         <button
           type="button"
           class="item sync"
-          title={app.syncStatus.error ?? 'Sync settings'}
+          title={syncShown === 'error' ? app.syncStatus.error : `Last synced ${ago(app.syncStatus.lastSyncAt)}`}
           onclick={() => (app.section = 'settings')}
         >
-          <span class={['dot', app.syncStatus.phase === 'idle' ? 'connected' : app.syncStatus.phase === 'syncing' ? 'connecting' : 'error']}></span>
-          <span class="label">{app.syncStatus.phase === 'error' ? 'sync failed' : app.syncStatus.phase === 'syncing' ? 'syncing…' : `synced ${ago(app.syncStatus.lastSyncAt)}`}</span>
+          {#if syncShown === 'syncing'}
+            <RefreshCw size={15} class="spin" />
+            <span class="label">syncing…</span>
+          {:else if syncShown === 'error'}
+            <CloudAlert size={15} class="failed" />
+            <span class="label">failed to sync</span>
+          {:else}
+            <CloudCheck size={15} />
+            <span class="label">synced</span>
+          {/if}
         </button>
       {/if}
       <button type="button" class="item" onclick={() => app.lock()} title="Lock vault (Ctrl+Shift+L)">
@@ -115,11 +138,8 @@
   .label {
     flex: 1;
   }
-  .sync {
-    font-size: 12px;
-  }
-  .sync .dot {
-    margin: 0 4px;
+  .sync :global(.failed) {
+    color: var(--danger);
   }
   .count {
     color: var(--text-weak);

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, posix } from 'node:path'
 import type { SFTPWrapper, Stats } from 'ssh2'
 import type { EditInfo, EditState } from '@shared/types'
+import { DEFAULT_APP_EDITOR } from '@shared/defaults'
 import type { Prompter, Send } from '../prompts'
 import type { Vault } from '../vault'
 
@@ -38,7 +39,8 @@ function hasVsCode(): Promise<boolean> {
 }
 
 async function openInEditor(path: string, command: string): Promise<void> {
-  const cmd = command.trim() || ((await hasVsCode()) ? 'code' : '')
+  const chosen = command.trim()
+  const cmd = chosen === DEFAULT_APP_EDITOR ? '' : chosen || ((await hasVsCode()) ? 'code' : '')
   if (!cmd) {
     const error = await shell.openPath(path)
     if (error) throw new Error(error)

@@ -1,4 +1,7 @@
 import type {
+  EditorChoice,
+  SaveResult,
+  TextFile,
   ContainerInfo,
   ContainerStats,
   EditInfo,
@@ -110,6 +113,14 @@ export interface BawkApi {
     close(sessionId: string): Promise<void>
     onStatus(cb: (event: SessionEvent) => void): Unsubscribe
     onTransfer(cb: (info: TransferInfo) => void): Unsubscribe
+    readText(sessionId: string, path: string): Promise<TextFile>
+    writeText(
+      sessionId: string,
+      path: string,
+      text: string,
+      bom: boolean,
+      expected: { mtime: number; size: number } | null
+    ): Promise<SaveResult>
     edit(sessionId: string, remotePath: string): Promise<void>
     editStop(sessionId: string, remotePath: string): Promise<void>
     onEdit(cb: (info: EditInfo) => void): Unsubscribe
@@ -151,5 +162,7 @@ export interface BawkApi {
     openExternal(url: string): void
     copy(text: string): void
     pathForFile(file: File): string
+    editors(): Promise<EditorChoice[]>
+    pickEditor(): Promise<string | null>
   }
 }

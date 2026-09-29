@@ -3,13 +3,15 @@ import path, { basename, join } from 'node:path'
 import { posix } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { SFTPWrapper, Stats } from 'ssh2'
-import type { ConnectTarget, FileEntry, SessionEvent, TransferDirection, TransferInfo } from '@shared/types'
+import type { ConnectTarget, FileEntry, SaveResult, SessionEvent, TextFile, TransferDirection, TransferInfo } from '@shared/types'
 import type { Prompter, Send } from '../prompts'
 import type { Vault } from '../vault'
 import { CancelledError, closeConnection, connect, type Connection } from './connect'
 import { RemoteEditor } from './remote-edit'
 
 const CHUNK = 32 * 1024
+const TEXT_MAX = 5 * 1024 * 1024
+const BOM = Buffer.from([0xef, 0xbb, 0xbf])
 const PARALLEL = 32
 const S_IFMT = 0o170000
 const S_IFDIR = 0o040000
@@ -191,6 +193,42 @@ export class SftpSessions {
   async realpath(sessionId: string, path: string): Promise<string> {
     const sftp = this.get(sessionId)
     return call<string>((cb) => sftp.realpath(path, cb))
+  }
+
+  async readText(sessionId: string, path: string): Promise<TextFile> {
+    const sftp = this.get(sessionId)
+    const st = await call<Stats>((cb) => sftp.stat(path, cb))
+    if (st.isDirectory()) throw new Error('Folders cannot be opened in an editor')
+    if (st.size > TEXT_MAX) throw new Error('This file is larger than 5 MB. Download it or use an external editor.')
+    const data = await call<Buffer>((cb) => sftp.readFile(path, cb))
+    if (data.subarray(0, 8000).includes(0)) throw new Error('This looks like a binary file')
+    const bom = data.subarray(0, 3).equals(BOM)
+    let text: string
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bom ? data.subarray(3) : data)
+    } catch {
+      throw new Error('This file is not UTF-8 text')
+    }
+    return { text, bom, mtime: st.mtime, size: st.size }
+  }
+
+  // expected is the stat from when the file was read; a mismatch means someone else changed it
+  async writeText(
+    sessionId: string,
+    path: string,
+    text: string,
+    bom: boolean,
+    expected: { mtime: number; size: number } | null
+  ): Promise<SaveResult> {
+    const sftp = this.get(sessionId)
+    if (expected) {
+      const st = await call<Stats>((cb) => sftp.stat(path, cb)).catch(() => null)
+      if (st && (st.mtime !== expected.mtime || st.size !== expected.size)) return { conflict: true }
+    }
+    const body = Buffer.from(text, 'utf8')
+    await call((cb) => sftp.writeFile(path, bom ? Buffer.concat([BOM, body]) : body, cb))
+    const after = await call<Stats>((cb) => sftp.stat(path, cb))
+    return { conflict: false, mtime: after.mtime, size: after.size }
   }
 
   async mkdir(sessionId: string, path: string): Promise<void> {
