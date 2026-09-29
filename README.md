@@ -22,6 +22,8 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 
 Everything is on the [Releases](https://github.com/juddisjudd/bawkterm/releases) page. `SHA256SUMS.txt` there lists a checksum for every file.
 
+**Updates:** the Windows installer, the AppImage, the `.deb` and the `.rpm` update themselves. bawkterm checks GitHub releases on start and every 6 hours, downloads the new version in the background, and shows **update to vX.Y.Z** in the sidebar when it's ready. Turn this off, or check by hand, under **settings → updates**. The Flatpak and the AUR package are updated by `flatpak update` and your AUR helper instead.
+
 ### Windows
 
 Download `bawkterm-<version>-setup.exe` and run it. The installer is not code-signed yet, so Windows SmartScreen asks once: **More info → Run anyway**.
@@ -88,6 +90,7 @@ bawkterm holds the keys to your servers, so this section says plainly what it pr
 - **Edit in editor**: temp copies are marked as downloaded from the internet and deleted when you lock, quit or next start. "Windows default app" only opens text types; anything that could run goes to Notepad.
 - **Remote Desktop**: on Windows, the password goes to the Windows credential store through a private pipe, never on a command line. It lasts only for your Windows session and is deleted after launch. On Linux, FreeRDP receives it through its standard input.
 - **Clipboard**: remote programs can copy to your clipboard (OSC 52) only if you turn that on, and only from the tab in front, and you see a notice each time. They can never read it. Links in the terminal open on Ctrl+click.
+- **Updates**: downloaded over HTTPS from this repository's GitHub releases, and installed only if the file matches the SHA-512 checksum published with the release.
 
 ### Sync
 
@@ -104,6 +107,7 @@ bawkterm holds the keys to your servers, so this section says plainly what it pr
 - **Malware running as your user account.** It can read the app's memory while the vault is unlocked, log your keystrokes, or use auto-unlock if you turned it on.
 - **Open sessions while locked.** Locking hides everything and requires unlocking, but SSH and SFTP sessions stay connected.
 - **A leaked sync link or server token.** Treat them like passwords. To rotate them, set up sync again with a new token.
+- **A hijacked release.** Builds are not code-signed yet, so the updater trusts whatever this repository's GitHub releases contain. Someone who took over the maintainer's GitHub account could publish a malicious update.
 - **Forks sharing the passkey site name.** Passkeys are tied to `bawkterm.bawkbawk.net` (the app serves itself from that name locally, without network access). Forks should change `APP_HOST` in `src/main/index.ts`.
 
 ## Build from source

@@ -16,7 +16,8 @@ import type {
   VaultData,
   VaultStatus,
   LocalState,
-  UnlockStatus
+  UnlockStatus,
+  UpdateStatus
 } from '@shared/types'
 
 export type Section = 'hosts' | 'keychain' | 'snippets' | 'known' | 'settings'
@@ -86,6 +87,7 @@ class AppState {
   transfers = $state<TransferInfo[]>([])
   edits = $state<EditInfo[]>([])
   syncStatus = $state<SyncStatus>({ phase: 'off' })
+  updateStatus = $state<UpdateStatus>({ supported: false, state: 'idle' })
   unlockStatus = $state<UnlockStatus | null>(null)
   systemDark = $state(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
@@ -168,9 +170,11 @@ class AppState {
     api.prompts.onRequest((req) => this.showPrompt(req))
     api.prompts.onCancel((id) => this.dropModal(id))
     api.sync.onStatus((s) => (this.syncStatus = s))
+    api.update.onStatus((s) => this.setUpdate(s))
   }
 
   async init(): Promise<void> {
+    void api.update.status().then((s) => (this.updateStatus = s))
     this.status = await api.vault.status()
     void this.refreshUnlock()
     if (this.status.state === 'unlocked') {
@@ -199,6 +203,27 @@ class AppState {
       this.paletteOpen = false
       void this.refreshStatus()
     }
+  }
+
+  private setUpdate(status: UpdateStatus): void {
+    if (status.state === 'ready' && this.updateStatus.state !== 'ready') {
+      this.toast(`bawkterm ${status.version} is ready. Restart from the sidebar to update.`)
+    }
+    this.updateStatus = status
+  }
+
+  async restartToUpdate(): Promise<void> {
+    if (
+      this.tabs.some((t) => t.dirty) &&
+      !(await this.confirm('Unsaved changes', 'Some files have changes that are not saved.', 'Restart without saving'))
+    ) {
+      return
+    }
+    this.quitting = true
+    await api.update.install().catch((err) => {
+      this.quitting = false
+      this.fail(err)
+    })
   }
 
   async refreshUnlock(): Promise<void> {

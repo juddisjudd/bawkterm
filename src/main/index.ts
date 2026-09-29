@@ -131,11 +131,13 @@ function createWindow(vault: Vault): BrowserWindow {
   }
 
   services = registerIpc(win, vault, ORIGINS)
+  services.updater.start()
   win.on('focus', () => services?.sync.poke())
   win.on('closed', () => {
     services?.terminals.closeAll()
     services?.sftp.closeAll()
     services?.docker.closeAll()
+    services?.updater.dispose()
   })
   return win
 }

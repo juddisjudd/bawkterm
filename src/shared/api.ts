@@ -26,7 +26,8 @@ import type {
   VaultStatus,
   LocalState,
   PasskeyEnrollment,
-  UnlockStatus
+  UnlockStatus,
+  UpdateStatus
 } from './types'
 
 type Unsubscribe = () => void
@@ -161,6 +162,12 @@ export interface BawkApi {
     close(): void
     isMaximized(): Promise<boolean>
     onMaximized(cb: (maximized: boolean) => void): Unsubscribe
+  }
+  update: {
+    status(): Promise<UpdateStatus>
+    check(): Promise<UpdateStatus>
+    install(): Promise<void>
+    onStatus(cb: (status: UpdateStatus) => void): Unsubscribe
   }
   app: {
     openExternal(url: string): void

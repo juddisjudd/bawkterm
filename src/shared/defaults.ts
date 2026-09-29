@@ -20,7 +20,8 @@ export const DEFAULT_SETTINGS: Settings = {
   bellNotify: true,
   terminalTheme: 'auto',
   restoreTabs: true,
-  lockOnSystemLock: true
+  lockOnSystemLock: true,
+  autoUpdate: true
 }
 
 export function emptyVault(): VaultData {

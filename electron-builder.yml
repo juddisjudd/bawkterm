@@ -17,6 +17,12 @@ electronFuses:
   enableCookieEncryption: true
   grantFileProtocolExtraPrivileges: false
 npmRebuild: false
+# where the built-in updater looks for new versions; builds still run with --publish never
+publish:
+  provider: github
+  owner: juddisjudd
+  repo: bawkterm
+  releaseType: release
 win:
   icon: build/icon.ico
   extraResources:

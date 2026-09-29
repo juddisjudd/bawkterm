@@ -94,6 +94,18 @@ export interface SyncState {
   lastError?: string
 }
 
+export type UpdateState = 'idle' | 'checking' | 'downloading' | 'ready' | 'none' | 'error'
+
+export interface UpdateStatus {
+  // false in dev builds and where a package manager owns updates (Flatpak, AUR, tar.gz)
+  supported: boolean
+  managedBy?: 'dev' | 'flatpak' | 'package'
+  state: UpdateState
+  version?: string
+  percent?: number
+  error?: string
+}
+
 export type SyncPhase = 'off' | 'idle' | 'syncing' | 'error'
 
 export interface SyncStatus {
@@ -126,6 +138,7 @@ export interface Settings {
   terminalTheme: string
   restoreTabs: boolean
   lockOnSystemLock: boolean
+  autoUpdate: boolean
 }
 
 export interface VaultData {

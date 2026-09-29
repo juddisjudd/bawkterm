@@ -201,7 +201,8 @@ export function cleanSettings(v: unknown): Partial<Settings> {
     'osc52',
     'bellNotify',
     'restoreTabs',
-    'lockOnSystemLock'
+    'lockOnSystemLock',
+    'autoUpdate'
   ] as const) {
     set(key, (x) => bool(x, key))
   }

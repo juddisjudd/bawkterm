@@ -16,6 +16,7 @@ import { UnlockMethods } from './unlock'
 import { Terminals } from './ssh/terminal'
 import type { Vault } from './vault'
 import { detectEditors, pickEditor } from './editors'
+import { Updater } from './updater'
 import {
   bool,
   cleanEnrollment,
@@ -78,6 +79,7 @@ export interface Services {
   sync: SyncEngine
   docker: DockerSessions
   rdp: RdpLauncher
+  updater: Updater
 }
 
 export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[]): Services {
@@ -99,6 +101,7 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   const docker = new DockerSessions(vault, prompter, send)
   const rdp = new RdpLauncher(vault, prompter)
   const unlock = new UnlockMethods(vault)
+  const updater = new Updater(vault, send)
 
   vault.onChange((data) => send('vault:changed', redact(data)))
   const sync = new SyncEngine(vault, send)
@@ -400,6 +403,9 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   win.on('maximize', () => send('window:maximized', true))
   win.on('unmaximize', () => send('window:maximized', false))
   listen('app:copy', (value) => clipboard.writeText(text(value, 'text', 1024 * 1024)))
+  handle('update:status', () => updater.get())
+  handle('update:check', () => updater.check(true))
+  handle('update:install', () => updater.install())
   handle('app:editors', () => detectEditors())
   handle('app:pickEditor', () => pickEditor(win))
   listen('app:openExternal', (url) => {
@@ -407,5 +413,5 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
     if (/^https?:\/\//i.test(target)) void shell.openExternal(target)
   })
 
-  return { terminals, sftp, prompter, sync, docker, rdp }
+  return { terminals, sftp, prompter, sync, docker, rdp, updater }
 }

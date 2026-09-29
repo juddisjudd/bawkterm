@@ -139,6 +139,12 @@ const api: BawkApi = {
     isMaximized: () => invoke('window:isMaximized'),
     onMaximized: (cb) => on('window:maximized', cb)
   },
+  update: {
+    status: () => invoke('update:status'),
+    check: () => invoke('update:check'),
+    install: () => invoke('update:install'),
+    onStatus: (cb) => on('update:status', cb)
+  },
   app: {
     openExternal: (url) => ipcRenderer.send('app:openExternal', url),
     copy: (text) => ipcRenderer.send('app:copy', text),

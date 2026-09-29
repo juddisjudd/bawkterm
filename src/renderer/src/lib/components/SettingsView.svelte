@@ -46,6 +46,43 @@
     else void set('editorCommand', value)
   }
 
+  const update = $derived(app.updateStatus)
+  let checking = $state(false)
+  const updateLine = $derived.by(() => {
+    switch (update.state) {
+      case 'checking':
+        return 'checking for updates…'
+      case 'downloading':
+        return `downloading v${update.version}… ${update.percent ?? 0}%`
+      case 'ready':
+        return `v${update.version} is ready to install`
+      case 'none':
+        return 'you have the latest version'
+      case 'error':
+        return 'could not check for updates'
+      default:
+        return `you have v${__APP_VERSION__}`
+    }
+  })
+  const managedHint = $derived(
+    update.managedBy === 'dev'
+      ? 'Development builds do not update themselves.'
+      : update.managedBy === 'flatpak'
+        ? 'This Flatpak is updated with "flatpak update".'
+        : 'This install is updated by your package manager.'
+  )
+
+  async function checkForUpdates(): Promise<void> {
+    checking = true
+    try {
+      await window.api.update.check()
+    } catch (err) {
+      app.fail(err)
+    } finally {
+      checking = false
+    }
+  }
+
   const methods = $derived(app.unlockStatus)
   let working = $state<'hello' | 'passkey' | null>(null)
 
@@ -303,6 +340,33 @@
       {/if}
     </div>
     <p class="hint note">Your master password always works too. These only add faster ways to unlock.</p>
+    {/if}
+  </section>
+
+  <section>
+    <h2>updates</h2>
+    {#if update.supported}
+      <div class="checks">
+        <Checkbox checked={s.autoUpdate} label="check for updates automatically" onchange={(v) => set('autoUpdate', v)} />
+      </div>
+      <div class="row">
+        <span class="stack">
+          <span>{updateLine}</span>
+          {#if update.state === 'error' && update.error}<span class="hint selectable">{update.error}</span>{/if}
+        </span>
+        {#if update.state === 'ready'}
+          <button type="button" class="btn strong" onclick={() => app.restartToUpdate()}>Restart and update</button>
+        {:else}
+          <button
+            type="button"
+            class="btn"
+            disabled={checking || update.state === 'checking' || update.state === 'downloading'}
+            onclick={checkForUpdates}>Check now</button
+          >
+        {/if}
+      </div>
+    {:else}
+      <p class="hint">bawkterm v{__APP_VERSION__}. {managedHint}</p>
     {/if}
   </section>
 

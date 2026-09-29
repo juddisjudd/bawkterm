@@ -8,6 +8,7 @@
   import CloudCheck from '@lucide/svelte/icons/cloud-check'
   import CloudAlert from '@lucide/svelte/icons/cloud-alert'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
+  import CircleArrowDown from '@lucide/svelte/icons/circle-arrow-down'
   import { app, type Section } from '$lib/state.svelte'
   import { ago } from '$lib/format'
   import HostsView from './HostsView.svelte'
@@ -54,6 +55,12 @@
       {/each}
     </nav>
     <div class="foot">
+      {#if app.updateStatus.state === 'ready'}
+        <button type="button" class="item update" title="Restart bawkterm to install the update" onclick={() => app.restartToUpdate()}>
+          <CircleArrowDown size={15} />
+          <span class="label">update to v{app.updateStatus.version}</span>
+        </button>
+      {/if}
       {#if app.syncStatus.phase !== 'off'}
         <button
           type="button"
@@ -137,6 +144,12 @@
   }
   .label {
     flex: 1;
+  }
+  .update {
+    color: var(--text-strong);
+  }
+  .update :global(svg) {
+    color: var(--success);
   }
   .sync :global(.synced) {
     color: var(--success);
