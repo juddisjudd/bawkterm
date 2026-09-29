@@ -35,25 +35,40 @@
     if (res) await run(() => window.api.sync.create(res.values.url, res.values.token), 'Sync is on')
   }
 
+  function linkServer(link: string): string | null {
+    try {
+      const body = link.trim().replace(/^bawksync:/, '').replace(/-/g, '+').replace(/_/g, '/')
+      return new URL(JSON.parse(atob(body)).u).host
+    } catch {
+      return null
+    }
+  }
+
   async function join(): Promise<void> {
     const res = await app.ask({
       title: 'Join sync',
       message: 'Paste the sync link from a device that already syncs (settings → sync → copy sync link). Items on this device are merged in.',
       fields: [{ name: 'link', label: 'sync link', secret: true }],
-      confirmLabel: 'Join'
+      confirmLabel: 'Next'
     })
-    if (res) await run(() => window.api.sync.join(res.values.link), 'Joined sync')
+    if (!res) return
+    const server = linkServer(res.values.link)
+    // whoever made the link can read everything this device uploads, so say that before anything leaves
+    const ok = await app.confirm(
+      'Join this sync?',
+      `Everything in this vault, including passwords and private keys, will be uploaded to ${server ?? 'the server in the link'}, encrypted with the key in the link. Anyone who has this link can read it. Only use a link you copied from your own device.`,
+      'Join and upload'
+    )
+    if (ok) await run(() => window.api.sync.join(res.values.link), 'Joined sync')
   }
 
   async function copyLink(): Promise<void> {
-    const ok = await app.confirm(
-      'Copy sync link',
-      'The link contains the server token and the encryption key. Anyone who has it can read your whole vault. Paste it only into your own devices, then clear your clipboard.',
-      'Copy link',
-      false
+    const password = await app.askMasterPassword(
+      'The link contains the server token and the encryption key. Anyone who has it can read your whole vault. Paste it only into your own devices.',
+      'Copy link'
     )
-    if (!ok) return
-    await run(async () => navigator.clipboard.writeText(await window.api.sync.link()), 'Sync link copied')
+    if (!password) return
+    await run(() => window.api.sync.copyLink(password), 'Sync link copied. It is cleared from the clipboard in a minute.')
   }
 
   async function disconnect(): Promise<void> {
@@ -84,12 +99,11 @@
       {:else if status.phase === 'error'}
         <CloudAlert size={15} class="failed" /><span>failed to sync</span>
       {:else}
-        <CloudCheck size={15} /><span>synced</span><span class="muted">· last synced {ago(status.lastSyncAt)}</span>
+        <CloudCheck size={15} class="synced" /><span>synced</span><span class="muted">· last synced {ago(status.lastSyncAt)}</span>
       {/if}
     </div>
     {#if status.phase === 'error' && status.error}<p class="error selectable">{status.error}</p>{/if}
     <p class="muted server selectable">{config.url}</p>
-    <p class="muted hint">Syncs after you change something and when you come back to the window.</p>
     <div class="actions">
       <button type="button" class="btn" disabled={busy || status.phase === 'syncing'} onclick={() => run(() => window.api.sync.now())}>
         Sync now
@@ -119,6 +133,9 @@
     gap: 10px;
     color: var(--text-strong);
   }
+  .state :global(.synced) {
+    color: var(--success);
+  }
   .state :global(.failed),
   .error {
     color: var(--danger);
@@ -128,11 +145,7 @@
     font-size: 12px;
   }
   .server {
-    margin: 4px 0 0 25px;
-    font-size: 12px;
-  }
-  .hint {
-    margin: 2px 0 14px 25px;
+    margin: 4px 0 14px 25px;
     font-size: 12px;
   }
   .actions {

@@ -2,6 +2,7 @@
   import X from '@lucide/svelte/icons/x'
   import type { EditInfo } from '@shared/types'
   import { app } from '$lib/state.svelte'
+  import { visibleName } from '$lib/format'
 
   let { sessionId }: { sessionId: string } = $props()
 
@@ -32,7 +33,7 @@
     {#each list as e (e.remotePath)}
       <div class={['edit', e.state]}>
         <span class="mark">✎</span>
-        <span class="name" title={e.remotePath}>{e.name}</span>
+        <span class="name" title={e.remotePath}>{visibleName(e.name)}</span>
         <span class="state">{describe(e)}</span>
         <button type="button" class="btn small ghost" onclick={() => window.api.sftp.edit(sessionId, e.remotePath).catch((err) => app.fail(err))}>
           reopen

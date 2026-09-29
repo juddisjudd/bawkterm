@@ -39,18 +39,22 @@ export interface BawkApi {
     create(password: string, remember: boolean): Promise<VaultData>
     unlock(password: string, remember: boolean): Promise<VaultData>
     lock(): Promise<void>
-    setRemember(on: boolean): Promise<VaultStatus>
+    setRemember(on: boolean, password?: string): Promise<VaultStatus>
+    verifyPassword(password: string): Promise<void>
     changePassword(current: string, next: string): Promise<void>
     onChanged(cb: (data: VaultData | null) => void): Unsubscribe
   }
   unlock: {
     status(): Promise<UnlockStatus>
     hello(): Promise<VaultData>
-    enableHello(): Promise<void>
+    enableHello(password: string): Promise<void>
     disableHello(): Promise<void>
     passkey(prfOutput: string): Promise<VaultData>
-    enablePasskey(enrollment: PasskeyEnrollment, prfOutput: string): Promise<void>
+    enablePasskey(enrollment: PasskeyEnrollment, prfOutput: string, password: string): Promise<void>
     disablePasskey(): Promise<void>
+  }
+  secrets: {
+    reveal(kind: 'host' | 'identity', id: string, password: string): Promise<string>
   }
   hosts: {
     save(host: Host): Promise<Host>
@@ -75,7 +79,7 @@ export interface BawkApi {
     status(): Promise<SyncStatus>
     create(url: string, token: string): Promise<void>
     join(link: string): Promise<void>
-    link(): Promise<string>
+    copyLink(password: string): Promise<void>
     now(): Promise<void>
     disconnect(): Promise<void>
     onStatus(cb: (status: SyncStatus) => void): Unsubscribe

@@ -37,3 +37,8 @@ export function mode(m: number): string {
   for (let i = 0; i < 9; i++) out += m & (1 << (8 - i)) ? chars[i] : '-'
   return out
 }
+
+// direction overrides let "invoice\u202Efdp.exe" display as "invoiceexe.pdf", so they are shown as a visible mark
+export function visibleName(name: string): string {
+  return name.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '\ufffd')
+}

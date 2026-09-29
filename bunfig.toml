@@ -1,0 +1,5 @@
+[install]
+# electron-builder packs node_modules as a flat tree
+linker = "hoisted"
+# only install versions that have been public for a day, so a hijacked release has time to be caught
+minimumReleaseAge = 86400

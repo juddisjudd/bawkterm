@@ -1,10 +1,15 @@
-import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto'
+import { isIP } from 'node:net'
 import { emptySync } from '@shared/defaults'
 import type { SyncConfig, SyncPhase, SyncStatus, VaultData } from '@shared/types'
 import type { Send } from './prompts'
 import type { Vault } from './vault'
+import { cleanHost, cleanIdentity, cleanKey, cleanKnownHost, cleanSnippet } from './validate'
 
 const PAGE = 500
+const MAX_PAGES = 1000
+const MAX_RESPONSE = 64 * 1024 * 1024
+const PAD = 1024
 const PUSH_CHUNK = 200
 const FOCUS_THROTTLE_MS = 60_000
 const RETRY_MS = [30_000, 60_000, 120_000, 300_000]
@@ -50,25 +55,35 @@ class RecordCipher {
     return createHmac('sha256', this.mac).update(rkey).digest('base64url')
   }
 
+  // padded to whole KiB so the server learns less about what each record holds
   seal(id: string, payload: Payload): string {
+    const json = JSON.stringify(payload)
+    const padded = json + ' '.repeat((PAD - (Buffer.byteLength(json) % PAD)) % PAD)
     const iv = randomBytes(12)
-    const cipher = createCipheriv('aes-256-gcm', this.enc, iv)
+    const cipher = createCipheriv('aes-256-gcm', this.enc, iv, { authTagLength: 16 })
     cipher.setAAD(Buffer.from(id))
-    const body = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()])
+    const body = Buffer.concat([cipher.update(padded, 'utf8'), cipher.final()])
     return Buffer.concat([iv, body, cipher.getAuthTag()]).toString('base64url')
   }
 
-  open(id: string, blob: string): Payload {
+  // returns null for anything that does not decrypt or does not belong under this id
+  open(id: string, blob: string): Payload | null {
     const raw = Buffer.from(blob, 'base64url')
-    const decipher = createDecipheriv('aes-256-gcm', this.enc, raw.subarray(0, 12))
+    if (raw.length < 28) return null
+    const decipher = createDecipheriv('aes-256-gcm', this.enc, raw.subarray(0, 12), { authTagLength: 16 })
     decipher.setAAD(Buffer.from(id))
     decipher.setAuthTag(raw.subarray(raw.length - 16))
+    let payload: Payload
     try {
       const text = Buffer.concat([decipher.update(raw.subarray(12, raw.length - 16)), decipher.final()]).toString('utf8')
-      return JSON.parse(text) as Payload
+      payload = JSON.parse(text) as Payload
     } catch {
-      throw new Error('Sync key does not match the data on the server')
+      return null
     }
+    if (typeof payload?.k !== 'string' || !Number.isSafeInteger(payload.t)) return null
+    const expected = Buffer.from(this.id(payload.k))
+    const actual = Buffer.from(id)
+    return expected.length === actual.length && timingSafeEqual(expected, actual) ? payload : null
   }
 }
 
@@ -91,41 +106,49 @@ function upsert<T extends { id: string }>(list: T[], value: T): void {
   else list.push(value)
 }
 
-function applyItem(d: VaultData, rkey: string, value: unknown): void {
+// items from other devices are validated like local input; anything malformed or filed under the wrong id is ignored
+function applyItem(d: VaultData, rkey: string, value: unknown): boolean {
   const [kind, ...rest] = rkey.split(':')
   const id = rest.join(':')
-  switch (kind) {
-    case 'host': {
-      const incoming = value as VaultData['hosts'][number]
-      const lastUsedAt = d.hosts.find((h) => h.id === id)?.lastUsedAt
-      upsert(d.hosts, {
-        ...incoming,
-        kind: incoming.kind ?? 'ssh',
-        rdpFullscreen: incoming.rdpFullscreen ?? true,
-        startupCommand: incoming.startupCommand ?? '',
-        bookmarks: incoming.bookmarks ?? [],
-        folderColors: incoming.folderColors ?? {},
-        tags: incoming.tags ?? [],
-        lastUsedAt
-      })
-      break
+  try {
+    switch (kind) {
+      case 'host': {
+        const incoming = cleanHost(value)
+        if (incoming.id !== id) return false
+        const lastUsedAt = d.hosts.find((h) => h.id === id)?.lastUsedAt
+        upsert(d.hosts, { ...incoming, lastUsedAt })
+        return true
+      }
+      case 'key': {
+        const key = cleanKey(value)
+        if (key.id !== id) return false
+        upsert(d.keys, key)
+        return true
+      }
+      case 'identity': {
+        const identity = cleanIdentity(value)
+        if (identity.id !== id) return false
+        upsert(d.identities, identity)
+        return true
+      }
+      case 'snippet': {
+        const snippet = cleanSnippet(value)
+        if (snippet.id !== id) return false
+        upsert(d.snippets, snippet)
+        return true
+      }
+      case 'known': {
+        const k = cleanKnownHost(value)
+        if (`${k.host}|${k.keyType}` !== id) return false
+        d.knownHosts = d.knownHosts.filter((x) => !(x.host === k.host && x.keyType === k.keyType))
+        d.knownHosts.push(k)
+        return true
+      }
     }
-    case 'key':
-      upsert(d.keys, value as VaultData['keys'][number])
-      break
-    case 'identity':
-      upsert(d.identities, value as VaultData['identities'][number])
-      break
-    case 'snippet':
-      upsert(d.snippets, value as VaultData['snippets'][number])
-      break
-    case 'known': {
-      const k = value as VaultData['knownHosts'][number]
-      d.knownHosts = d.knownHosts.filter((x) => !(x.host === k.host && x.keyType === k.keyType))
-      d.knownHosts.push(k)
-      break
-    }
+  } catch {
+    // malformed item
   }
+  return false
 }
 
 function removeItem(d: VaultData, rkey: string): void {
@@ -164,18 +187,16 @@ function pendingChanges(d: VaultData): Change[] {
   return changes
 }
 
+// plain http only to addresses that cannot be on the public internet; names are not trusted, only IP literals
 function isPrivateHost(hostname: string): boolean {
-  const h = hostname.replace(/^\[|\]$/g, '')
-  return (
-    h === 'localhost' ||
-    h === '::1' ||
-    h.endsWith('.local') ||
-    /^127\./.test(h) ||
-    /^10\./.test(h) ||
-    /^192\.168\./.test(h) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h)
-  )
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  if (h === 'localhost') return true
+  if (isIP(h) === 4) {
+    const [a, b] = h.split('.').map(Number)
+    return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254)
+  }
+  if (isIP(h) === 6) return h === '::1' || /^f[cd]/.test(h) || /^fe[89ab]/.test(h)
+  return false
 }
 
 export function normalizeServerUrl(raw: string): string {
@@ -217,6 +238,7 @@ async function request<T>(config: SyncConfig, method: string, path: string, body
         ...(body ? { 'content-type': 'application/json' } : {})
       },
       body: body ? JSON.stringify(body) : undefined,
+      redirect: 'error',
       signal: AbortSignal.timeout(20_000)
     })
   } catch (err) {
@@ -225,7 +247,14 @@ async function request<T>(config: SyncConfig, method: string, path: string, body
   }
   if (res.status === 401) throw new Error('The sync server rejected the token')
   if (!res.ok) throw new Error(`Sync server error ${res.status}`)
-  return (await res.json()) as T
+  if (Number(res.headers.get('content-length') ?? 0) > MAX_RESPONSE) throw new Error('The sync server sent too much data')
+  const text = await res.text()
+  if (text.length > MAX_RESPONSE) throw new Error('The sync server sent too much data')
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error('The sync server sent an invalid answer')
+  }
 }
 
 async function checkServer(config: SyncConfig): Promise<number> {
@@ -238,6 +267,7 @@ async function checkServer(config: SyncConfig): Promise<number> {
 export class SyncEngine {
   private running: Promise<void> | null = null
   private again = false
+  private rejections = 0
   private debounce?: NodeJS.Timeout
   private retry?: NodeJS.Timeout
   private active = false
@@ -304,6 +334,7 @@ export class SyncEngine {
       return this.running
     }
     this.running = (async () => {
+      this.rejections = 0
       try {
         do {
           this.again = false
@@ -327,32 +358,51 @@ export class SyncEngine {
       const sameConfig = (d: VaultData): boolean => d.sync.config?.key === config.key && d.sync.config.url === config.url
 
       let since = this.vault.get().sync.lastSeq
-      const incoming: { payload: Payload; deleted: boolean }[] = []
-      for (;;) {
+      const incoming: Payload[] = []
+      let unreadable = 0
+      for (let pages = 0; ; pages++) {
+        if (pages >= MAX_PAGES) throw new Error('The sync server keeps sending more pages')
         const page = await request<{ records: RemoteRecord[]; seq: number; more: boolean }>(
           config,
           'GET',
           `/v1/records?since=${since}&limit=${PAGE}`
         )
-        for (const r of page.records) incoming.push({ payload: cipher.open(r.id, r.blob), deleted: r.deleted })
+        if (!Array.isArray(page?.records) || !Number.isSafeInteger(page.seq) || page.seq < since) {
+          throw new Error('The sync server sent an invalid answer')
+        }
+        if (page.more && page.seq === since) throw new Error('The sync server sent an invalid answer')
+        for (const r of page.records) {
+          const payload = typeof r?.id === 'string' && typeof r.blob === 'string' ? cipher.open(r.id, r.blob) : null
+          if (payload) incoming.push(payload)
+          else unreadable++
+        }
         since = page.seq
         if (!page.more) break
+      }
+      if (unreadable && !incoming.length && since > 0 && this.vault.get().sync.lastSeq === 0) {
+        throw new Error('Sync key does not match the data on the server')
       }
 
       if (incoming.length || since !== this.vault.get().sync.lastSeq) {
         await this.vault.mutate((d) => {
           if (!sameConfig(d)) return
           const items = localItems(d)
-          for (const { payload, deleted } of incoming) {
-            const { k: rkey, v, t } = payload
+          for (const { k: rkey, v, t } of incoming) {
             if (d.sync.synced[rkey] === t) continue
             const local = items.get(rkey)
-            if (deleted || v === null) {
+            // deletion is decided by the encrypted payload only; the server's plain "deleted" flag is not trusted
+            if (v === null) {
               if (local && local.updatedAt <= t) removeItem(d, rkey)
-              if (!local || local.updatedAt <= t) delete d.sync.synced[rkey]
+              if (!local || local.updatedAt <= t) {
+                delete d.sync.synced[rkey]
+                d.sync.tombstones[rkey] = Math.max(t, d.sync.tombstones[rkey] ?? 0)
+              }
+            } else if ((d.sync.tombstones[rkey] ?? -1) >= t) {
+              continue
             } else if (!local || local.updatedAt <= t) {
-              applyItem(d, rkey, v)
+              if (!applyItem(d, rkey, v)) continue
               d.sync.synced[rkey] = t
+              delete d.sync.tombstones[rkey]
             }
           }
           d.sync.lastSeq = since
@@ -381,8 +431,13 @@ export class SyncEngine {
         await this.vault.mutate((d) => {
           if (!sameConfig(d)) return
           for (const c of accepted) {
-            if (c.value === null) delete d.sync.synced[c.rkey]
-            else d.sync.synced[c.rkey] = c.updatedAt
+            if (c.value === null) {
+              delete d.sync.synced[c.rkey]
+              d.sync.tombstones[c.rkey] = c.updatedAt
+            } else {
+              d.sync.synced[c.rkey] = c.updatedAt
+              delete d.sync.tombstones[c.rkey]
+            }
           }
           if (rejected.length) {
             for (const rkey of rejected) delete d.sync.synced[rkey]
@@ -393,6 +448,8 @@ export class SyncEngine {
           d.sync.lastError = undefined
         })
       }
+      // a server that rejects every push would otherwise loop forever re-pulling everything
+      if (this.again && ++this.rejections > 2) throw new Error('The sync server keeps rejecting changes from this device')
       this.failures = 0
       clearTimeout(this.retry)
       this.emit('idle')
@@ -436,7 +493,10 @@ export class SyncEngine {
     new RecordCipher(config.key)
     await checkServer(config)
     const first = await request<{ records: RemoteRecord[] }>(config, 'GET', '/v1/records?since=0&limit=1')
-    if (first.records[0]) new RecordCipher(config.key).open(first.records[0].id, first.records[0].blob)
+    const sample = first.records?.[0]
+    if (sample && !new RecordCipher(config.key).open(sample.id, sample.blob)) {
+      throw new Error('Sync key does not match the data on the server')
+    }
     await this.vault.mutate((d) => {
       d.sync = { ...emptySync(), config }
     })

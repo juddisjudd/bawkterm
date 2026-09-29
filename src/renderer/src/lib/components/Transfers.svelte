@@ -2,7 +2,7 @@
   import X from '@lucide/svelte/icons/x'
   import type { TransferInfo } from '@shared/types'
   import { app } from '$lib/state.svelte'
-  import { bar, bytes } from '$lib/format'
+  import { bar, bytes, visibleName } from '$lib/format'
 
   let { sessionId }: { sessionId: string } = $props()
 
@@ -51,7 +51,7 @@
           {@const fraction = t.total ? t.bytes / t.total : t.state === 'done' ? 1 : 0}
           <li class={t.state}>
             <span class="dir">{t.direction === 'upload' ? '↑' : '↓'}</span>
-            <span class="name" title={`${t.source} → ${t.dest}`}>{t.name}</span>
+            <span class="name" title={`${t.source} → ${t.dest}`}>{visibleName(t.name)}</span>
             <span class="bar">{bar(fraction)} {Math.floor(fraction * 100)}%</span>
             <span class="size">{bytes(t.bytes)} / {bytes(t.total)}{t.files > 1 ? ` · ${t.filesDone}/${t.files} files` : ''}</span>
             <span class="state" title={t.error}>{t.error ?? label(t)}</span>

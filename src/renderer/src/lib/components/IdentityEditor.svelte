@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { blankIdentity } from '@shared/defaults'
+  import { SECRET_KEPT, blankIdentity } from '@shared/defaults'
   import type { Identity } from '@shared/types'
   import { app } from '$lib/state.svelte'
   import Drawer from './Drawer.svelte'
@@ -12,6 +12,8 @@
   const existing = app.vault?.identities.find((i) => i.id === identityId)
   let identity = $state<Identity>(existing ? structuredClone(existing) : blankIdentity())
   let busy = $state(false)
+  let savedPassword = $state(identity.password === SECRET_KEPT)
+  if (identity.password === SECRET_KEPT) identity.password = ''
 
   async function save(): Promise<void> {
     if (!identity.username.trim()) {
@@ -22,6 +24,7 @@
     try {
       await window.api.identities.save({
         ...$state.snapshot(identity),
+        password: identity.password || (savedPassword ? SECRET_KEPT : ''),
         label: identity.label.trim() || identity.username.trim(),
         username: identity.username.trim()
       })
@@ -45,7 +48,18 @@
   </label>
   <label class="field">
     <span class="label">password</span>
-    <input class="input" type="password" bind:value={identity.password} placeholder="optional" autocomplete="off" />
+    <div class="with-button">
+      <input
+        class="input"
+        type="password"
+        bind:value={identity.password}
+        placeholder={savedPassword ? 'saved (type to replace)' : 'optional'}
+        autocomplete="off"
+      />
+      {#if savedPassword && !identity.password}
+        <button type="button" class="btn ghost" onclick={() => (savedPassword = false)}>Remove</button>
+      {/if}
+    </div>
   </label>
   <label class="field">
     <span class="label">key</span>
@@ -60,3 +74,13 @@
     <button type="button" class="btn ghost" onclick={onclose}>Cancel</button>
   {/snippet}
 </Drawer>
+
+<style>
+  .with-button {
+    display: flex;
+    gap: 6px;
+  }
+  .with-button .btn {
+    height: 32px;
+  }
+</style>

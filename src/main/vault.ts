@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scrypt } from 'node:crypto'
 import { DEFAULT_SETTINGS, emptyLocal, emptySync, emptyVault } from '@shared/defaults'
 import type { VaultData, VaultStatus } from '@shared/types'
+import { writeFileAtomic } from './files'
 
 interface KdfParams {
   name: 'scrypt'
@@ -58,23 +59,41 @@ function deriveKey(password: string, kdf: KdfParams): Promise<Buffer> {
   })
 }
 
+// on Linux without a keyring Electron falls back to a fixed built-in key, which protects nothing
+function osEncryptionAvailable(): boolean {
+  if (!safeStorage.isEncryptionAvailable()) return false
+  if (process.platform !== 'linux') return true
+  return !['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend())
+}
+
 function newKdf(): KdfParams {
   return { name: 'scrypt', ...KDF_DEFAULTS, salt: randomBytes(16).toString('base64') }
 }
 
 function encrypt(key: Buffer, plaintext: Buffer, aad: Buffer): Wrapped {
   const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 })
   cipher.setAAD(aad)
   const data = Buffer.concat([cipher.update(plaintext), cipher.final()])
   return { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') }
 }
 
 function decrypt(key: Buffer, box: Wrapped, aad: Buffer): Buffer {
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(box.iv, 'base64'))
+  const iv = Buffer.from(box.iv, 'base64')
+  const tag = Buffer.from(box.tag, 'base64')
+  if (iv.length !== 12 || tag.length !== 16) throw new Error('Damaged encrypted data')
+  const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 })
   decipher.setAAD(aad)
-  decipher.setAuthTag(Buffer.from(box.tag, 'base64'))
+  decipher.setAuthTag(tag)
   return Buffer.concat([decipher.update(Buffer.from(box.data, 'base64')), decipher.final()])
+}
+
+function parseData(plaintext: Buffer): VaultData {
+  try {
+    return normalize(JSON.parse(plaintext.toString('utf8')))
+  } finally {
+    plaintext.fill(0)
+  }
 }
 
 export function wrapKey(kek: Buffer, key: Buffer, purpose: string): Wrapped {
@@ -139,13 +158,29 @@ export class Vault {
     return {
       state: this.data ? 'unlocked' : this.exists ? 'locked' : 'none',
       remembered: existsSync(this.rememberFile),
-      canRemember: safeStorage.isEncryptionAvailable()
+      canRemember: osEncryptionAvailable()
     }
   }
 
   get(): VaultData {
     if (!this.data) throw new Error('Vault is locked')
     return this.data
+  }
+
+  // re-checks the master password before actions that grant lasting access (new unlock methods, sync link)
+  async verifyPassword(password: string): Promise<void> {
+    if (!this.key || !this.passwordLock) throw new Error('Vault is locked')
+    const derived = await deriveKey(typeof password === 'string' ? password : '', this.passwordLock.kdf)
+    try {
+      const check = unwrapKey(derived, this.passwordLock.key, 'password')
+      const same = check.equals(this.key)
+      check.fill(0)
+      if (!same) throw new Error()
+    } catch {
+      throw new Error('Wrong master password')
+    } finally {
+      derived.fill(0)
+    }
   }
 
   wrapCurrentKey(kek: Buffer, purpose: string): Wrapped {
@@ -155,7 +190,7 @@ export class Vault {
 
   async tryAutoUnlock(): Promise<boolean> {
     if (this.data || !existsSync(this.rememberFile) || !this.exists) return false
-    if (!safeStorage.isEncryptionAvailable()) return false
+    if (!osEncryptionAvailable()) return false
     try {
       const key = Buffer.from(safeStorage.decryptString(await fs.readFile(this.rememberFile)), 'base64')
       const file = await this.readFile()
@@ -173,7 +208,9 @@ export class Vault {
     if (password.length < MIN_PASSWORD) throw new Error(`Use at least ${MIN_PASSWORD} characters`)
     const kdf = newKdf()
     this.key = randomBytes(32)
-    this.passwordLock = { kdf, key: wrapKey(await deriveKey(password, kdf), this.key, 'password') }
+    const derived = await deriveKey(password, kdf)
+    this.passwordLock = { kdf, key: wrapKey(derived, this.key, 'password') }
+    derived.fill(0)
     this.data = emptyVault()
     await this.persist()
     await this.setRemember(remember)
@@ -187,10 +224,13 @@ export class Vault {
       await this.openLegacy(file, await deriveKey(password, file.kdf))
     } else {
       let key: Buffer
+      const derived = await deriveKey(password, file.password.kdf)
       try {
-        key = unwrapKey(await deriveKey(password, file.password.kdf), file.password.key, 'password')
+        key = unwrapKey(derived, file.password.key, 'password')
       } catch {
         throw new Error('Wrong master password')
+      } finally {
+        derived.fill(0)
       }
       this.openWithKey(file, key)
     }
@@ -215,7 +255,8 @@ export class Vault {
     } catch {
       throw new Error('This unlock method no longer matches the vault')
     }
-    this.data = normalize(JSON.parse(plaintext.toString('utf8')))
+    this.data = parseData(plaintext)
+    this.key?.fill(0)
     this.key = key
     this.passwordLock = file.password
   }
@@ -228,9 +269,10 @@ export class Vault {
     } catch {
       throw new Error('Wrong master password')
     }
-    this.data = normalize(JSON.parse(plaintext.toString('utf8')))
+    this.data = parseData(plaintext)
     this.key = randomBytes(32)
     this.passwordLock = { kdf: file.kdf, key: wrapKey(passwordKey, this.key, 'password') }
+    passwordKey.fill(0)
     const remembered = existsSync(this.rememberFile)
     await this.persist()
     if (remembered) await this.setRemember(true)
@@ -249,22 +291,30 @@ export class Vault {
       return
     }
     if (!this.key) throw new Error('Vault is locked')
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('OS encryption is not available')
-    await fs.writeFile(this.rememberFile, safeStorage.encryptString(this.key.toString('base64')))
+    if (!osEncryptionAvailable()) throw new Error('No system keyring is available to hold the vault key')
+    await writeFileAtomic(this.rememberFile, safeStorage.encryptString(this.key.toString('base64')))
   }
 
+  // a new password also gets a new vault key, so old copies of the vault file, its backup and every other
+  // unlock method stop working; the caller revokes Windows Hello and passkey unlock afterwards
   async changePassword(current: string, next: string): Promise<void> {
     if (!this.data || !this.key || !this.passwordLock) throw new Error('Vault is locked')
     if (next.length < MIN_PASSWORD) throw new Error(`Use at least ${MIN_PASSWORD} characters`)
     try {
-      const check = unwrapKey(await deriveKey(current, this.passwordLock.kdf), this.passwordLock.key, 'password')
-      if (!check.equals(this.key)) throw new Error()
+      await this.verifyPassword(current)
     } catch {
       throw new Error('Current password is wrong')
     }
     const kdf = newKdf()
-    this.passwordLock = { kdf, key: wrapKey(await deriveKey(next, kdf), this.key, 'password') }
+    const derived = await deriveKey(next, kdf)
+    const previous = this.key
+    this.key = randomBytes(32)
+    this.passwordLock = { kdf, key: wrapKey(derived, this.key, 'password') }
+    derived.fill(0)
     await this.persist()
+    await fs.copyFile(this.file, `${this.file}.bak`)
+    if (existsSync(this.rememberFile)) await this.setRemember(true)
+    previous.fill(0)
   }
 
   async mutate<T>(fn: (data: VaultData) => T): Promise<T> {
@@ -278,12 +328,21 @@ export class Vault {
     return randomUUID()
   }
 
+  // a damaged vault.json (for example after a crash on an old build) falls back to the previous copy
   private async readFile(): Promise<VaultFile> {
-    const file = JSON.parse(await fs.readFile(this.file, 'utf8')) as VaultFile
-    if (file.format !== 'bawkterm-vault' || (file.version !== 1 && file.version !== 2)) {
-      throw new Error('Unknown vault format')
+    const parse = async (path: string): Promise<VaultFile> => {
+      const file = JSON.parse(await fs.readFile(path, 'utf8')) as VaultFile
+      if (file.format !== 'bawkterm-vault' || (file.version !== 1 && file.version !== 2)) {
+        throw new Error('Unknown vault format')
+      }
+      return file
     }
-    return file
+    try {
+      return await parse(this.file)
+    } catch (err) {
+      if (!(err instanceof SyntaxError) || !existsSync(`${this.file}.bak`)) throw err
+      return parse(`${this.file}.bak`)
+    }
   }
 
   private persist(): Promise<void> {
@@ -291,20 +350,17 @@ export class Vault {
     const passwordLock = this.passwordLock
     const data = this.data
     if (!key || !passwordLock || !data) return Promise.reject(new Error('Vault is locked'))
+    const plaintext = Buffer.from(JSON.stringify(data), 'utf8')
     const file: VaultFileV2 = {
       format: 'bawkterm-vault',
       version: 2,
       password: passwordLock,
       cipher: 'aes-256-gcm',
-      ...encrypt(key, Buffer.from(JSON.stringify(data), 'utf8'), DATA_AAD)
+      ...encrypt(key, plaintext, DATA_AAD)
     }
+    plaintext.fill(0)
     const sealed = JSON.stringify(file)
-    this.writing = this.writing.catch(() => {}).then(async () => {
-      const tmp = `${this.file}.tmp`
-      await fs.writeFile(tmp, sealed, { mode: 0o600 })
-      if (existsSync(this.file)) await fs.copyFile(this.file, `${this.file}.bak`)
-      await fs.rename(tmp, this.file)
-    })
+    this.writing = this.writing.catch(() => {}).then(() => writeFileAtomic(this.file, sealed, existsSync(this.file)))
     return this.writing
   }
 }

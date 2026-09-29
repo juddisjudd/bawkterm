@@ -8,6 +8,8 @@
   // svelte-ignore state_referenced_locally
   let values = $state<Record<string, string>>(Object.fromEntries(modal.fields.map((f) => [f.name, f.value ?? ''])))
   let checked = $state(false)
+  // risky prompts start on Cancel so a stray Enter (for example while typing in a terminal) never accepts them
+  const guarded = $derived(!modal.fields.length && (!!modal.danger || !!modal.choices?.[0]?.danger))
 
   function close(ok: boolean, choice?: string): void {
     const { id, resolve } = modal
@@ -46,18 +48,18 @@
       <Checkbox label={modal.checkbox.label} bind:checked />
     {/if}
     <div class="actions">
-      <button type="button" class="btn ghost" onclick={() => close(false)}>Cancel</button>
+      <button type="button" class="btn ghost" onclick={() => close(false)} {@attach focusOnMount(guarded)}>Cancel</button>
       {#if modal.choices}
         {#each modal.choices as c, i (c.id)}
           <button
             type="button"
             class={['btn', i === 0 && 'strong', c.danger && 'danger']}
             onclick={() => close(true, c.id)}
-            {@attach focusOnMount(i === 0)}>{c.label}</button
+            {@attach focusOnMount(i === 0 && !guarded)}>{c.label}</button
           >
         {/each}
       {:else}
-        <button type="submit" class={['btn', 'strong', modal.danger && 'danger']} {@attach focusOnMount(!modal.fields.length)}>
+        <button type="submit" class={['btn', 'strong', modal.danger && 'danger']} {@attach focusOnMount(!modal.fields.length && !guarded)}>
           {modal.confirmLabel}
         </button>
       {/if}

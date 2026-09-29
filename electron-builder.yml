@@ -7,14 +7,23 @@ files:
   - out/**
   - package.json
 asar: true
+# lock the shipped binary down: no running as plain Node, no inspector, no NODE_OPTIONS, and only the packaged app.asar (hash-checked)
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  enableCookieEncryption: true
+  grantFileProtocolExtraPrivileges: false
 npmRebuild: false
-extraResources:
-  - from: build/icon.ico
-    to: icon.ico
-  - from: build/icon-light.ico
-    to: icon-light.ico
 win:
   icon: build/icon.ico
+  extraResources:
+    - from: build/icon.ico
+      to: icon.ico
+    - from: build/icon-light.ico
+      to: icon-light.ico
   target:
     - target: nsis
       arch: [x64]
@@ -22,3 +31,51 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   artifactName: ${productName}-${version}-setup.${ext}
+linux:
+  icon: build/icon.png
+  appId: net.bawkbawk.bawkterm
+  executableName: bawkterm
+  syncDesktopName: true
+  category: Network
+  synopsis: SSH, SFTP, Docker and Remote Desktop client with an encrypted vault
+  maintainer: juddisjudd <juddisjudd@users.noreply.github.com>
+  vendor: juddisjudd
+  extraResources:
+    - from: build/icon.png
+      to: icon.png
+    - from: build/icon-light.png
+      to: icon-light.png
+  desktop:
+    entry:
+      StartupWMClass: bawkterm
+      Keywords: ssh;sftp;terminal;rdp;docker;
+  target:
+    - AppImage
+    - deb
+    - rpm
+    - tar.gz
+    - flatpak
+deb:
+  recommends:
+    - freerdp3-x11
+    - gnome-keyring
+rpm:
+  fpm: ['--rpm-rpmbuild-define=_build_id_links none']
+flatpak:
+  runtimeVersion: '25.08'
+  baseVersion: '25.08'
+  finishArgs:
+    - --socket=wayland
+    - --socket=fallback-x11
+    - --share=ipc
+    - --device=dri
+    - --share=network
+    # the local SFTP pane browses your files
+    - --filesystem=home
+    - --talk-name=org.freedesktop.Notifications
+    # auto-unlock keeps the vault key in the system keyring
+    - --talk-name=org.freedesktop.secrets
+    - --talk-name=org.kde.kwalletd5
+    - --talk-name=org.kde.kwalletd6
+    # SSH agent authentication
+    - --socket=ssh-auth

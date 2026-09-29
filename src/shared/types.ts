@@ -88,6 +88,8 @@ export interface SyncState {
   config: SyncConfig | null
   lastSeq: number
   synced: Record<string, number>
+  // deletion times, so a replayed old copy of a deleted item is not brought back
+  tombstones: Record<string, number>
   lastSyncAt?: number
   lastError?: string
 }
@@ -123,6 +125,7 @@ export interface Settings {
   bellNotify: boolean
   terminalTheme: string
   restoreTabs: boolean
+  lockOnSystemLock: boolean
 }
 
 export interface VaultData {

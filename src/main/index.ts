@@ -1,26 +1,44 @@
-import { app, BrowserWindow, Menu, nativeImage, nativeTheme, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, net, powerMonitor, protocol, session, shell } from 'electron'
 import { execFileSync } from 'node:child_process'
 import { join, normalize, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { registerIpc, type Services } from './ipc'
+import { sweepRdpCredentials } from './rdp'
+import { sweepEditFiles } from './ssh/remote-edit'
+import { system32 } from './system'
 import { Vault } from './vault'
 
-if (process.env.BAWKTERM_DATA_DIR) app.setPath('userData', process.env.BAWKTERM_DATA_DIR)
+// an installed copy never attaches a debugger, which could read the unlocked vault
+const DEBUG_SWITCHES = ['remote-debugging-port', 'remote-debugging-pipe', 'inspect', 'inspect-brk', 'inspect-port', 'js-flags']
+if (app.isPackaged && DEBUG_SWITCHES.some((s) => app.commandLine.hasSwitch(s))) {
+  app.exit(1)
+  process.exit(1)
+}
+
+if (!app.isPackaged && process.env.BAWKTERM_DATA_DIR) app.setPath('userData', process.env.BAWKTERM_DATA_DIR)
 let services: Services | undefined
 
 // The renderer is served from this https origin (answered locally, never fetched) so passkeys have a valid RP ID.
+// Forks should change it to a host they control.
 const APP_HOST = 'bawkterm.bawkbawk.net'
+const CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'self'; frame-ancestors 'none'"
+const ORIGINS = [
+  `https://${APP_HOST}`,
+  ...(!app.isPackaged && process.env['ELECTRON_RENDERER_URL'] ? [new URL(process.env['ELECTRON_RENDERER_URL']).origin] : [])
+]
 
 function iconFile(light: boolean): string {
-  const name = light ? 'icon-light.ico' : 'icon.ico'
+  const name = `${light ? 'icon-light' : 'icon'}.${process.platform === 'win32' ? 'ico' : 'png'}`
   return app.isPackaged ? join(process.resourcesPath, name) : join(app.getAppPath(), 'build', name)
 }
 
 // the taskbar follows the Windows mode, which can differ from the app mode nativeTheme reports
 function taskbarIsLight(): boolean {
+  if (process.platform !== 'win32') return !nativeTheme.shouldUseDarkColors
   try {
     const out = execFileSync(
-      'reg',
+      system32('reg.exe'),
       ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'SystemUsesLightTheme'],
       { encoding: 'utf8', windowsHide: true }
     )
@@ -32,13 +50,36 @@ function taskbarIsLight(): boolean {
 
 function serveRenderer(): void {
   const root = normalize(join(__dirname, '../renderer'))
-  protocol.handle('https', (request) => {
+  protocol.handle('https', async (request) => {
     const url = new URL(request.url)
     if (url.host !== APP_HOST) return new Response('blocked', { status: 403 })
     const file = normalize(join(root, decodeURIComponent(url.pathname)))
     if (file !== root && !file.startsWith(root + sep)) return new Response('not found', { status: 404 })
-    return net.fetch(pathToFileURL(file === root ? join(root, 'index.html') : file).toString())
+    const target = file === root ? join(root, 'index.html') : file
+    const res = await net.fetch(pathToFileURL(target).toString())
+    if (!target.endsWith('.html')) return res
+    const headers = new Headers(res.headers)
+    headers.set('Content-Security-Policy', CSP)
+    return new Response(res.body, { status: res.status, headers })
   })
+}
+
+// only the clipboard and notifications, and only for the app's own page
+function lockPermissions(): void {
+  const allowed = new Set(['clipboard-read', 'clipboard-sanitized-write', 'notifications'])
+  const fromApp = (url: string): boolean => {
+    try {
+      return ORIGINS.includes(new URL(url).origin)
+    } catch {
+      return false
+    }
+  }
+  const ses = session.defaultSession
+  ses.setPermissionRequestHandler((_wc, permission, callback, details) =>
+    callback(allowed.has(permission) && fromApp(details.requestingUrl))
+  )
+  ses.setPermissionCheckHandler((_wc, permission, origin) => allowed.has(permission) && fromApp(origin))
+  ses.setDevicePermissionHandler(() => false)
 }
 
 function createWindow(vault: Vault): BrowserWindow {
@@ -57,6 +98,7 @@ function createWindow(vault: Vault): BrowserWindow {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      devTools: !app.isPackaged,
       spellcheck: false
     }
   })
@@ -88,7 +130,7 @@ function createWindow(vault: Vault): BrowserWindow {
     void win.loadURL(`https://${APP_HOST}/index.html`)
   }
 
-  services = registerIpc(win, vault)
+  services = registerIpc(win, vault, ORIGINS)
   win.on('focus', () => services?.sync.poke())
   win.on('closed', () => {
     services?.terminals.closeAll()
@@ -111,11 +153,25 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     app.setAppUserModelId('dev.bawkterm')
     Menu.setApplicationMenu(null)
+    lockPermissions()
+    sweepEditFiles()
+    sweepRdpCredentials()
     if (app.isPackaged || !process.env['ELECTRON_RENDERER_URL']) serveRenderer()
     const vault = new Vault()
     await vault.tryAutoUnlock()
     createWindow(vault)
+    const lockWithSystem = (): void => {
+      if (!vault.unlocked || !vault.get().settings.lockOnSystemLock) return
+      services?.prompter.cancelAll()
+      vault.lock()
+    }
+    powerMonitor.on('lock-screen', lockWithSystem)
+    powerMonitor.on('suspend', lockWithSystem)
   })
 
+  app.on('will-quit', () => {
+    services?.sftp.editor.disposeAll()
+    services?.rdp.dispose()
+  })
   app.on('window-all-closed', () => app.quit())
 }

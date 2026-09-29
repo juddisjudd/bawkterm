@@ -10,7 +10,7 @@
   import { FOLDER_COLORS } from '@shared/defaults'
   import { favoriteLabels, tint, type FolderMarks } from '$lib/folders'
   import { app, type MenuItem } from '$lib/state.svelte'
-  import { bytes, date, mode } from '$lib/format'
+  import { bytes, date, mode, visibleName } from '$lib/format'
   import type { PathOps } from '$lib/paths'
 
   type Side = 'local' | 'remote'
@@ -177,7 +177,7 @@
 
   async function remove(list: FileEntry[]): Promise<void> {
     if (!list.length) return
-    const what = list.length === 1 ? `"${list[0].name}"` : `${list.length} items`
+    const what = list.length === 1 ? `"${visibleName(list[0].name)}"` : `${list.length} items`
     const message =
       side === 'local'
         ? `Move ${what} to the Recycle Bin?`
@@ -422,7 +422,7 @@
       >
         <span class={['name', isDirLike(entry) && marks?.colors[entry.path] && 'tinted']} style:--tint={isDirLike(entry) ? tint(marks?.colors[entry.path]) : undefined}>
           {#if isDirLike(entry)}<Folder size={14} class="icon dir" />{:else if entry.kind === 'link'}<FileSymlink size={14} class="icon" />{:else}<FileIcon size={14} class="icon" />{/if}
-          <span class="text">{entry.name}</span>
+          <span class="text">{visibleName(entry.name)}</span>
         </span>
         <span class="num muted">{isDirLike(entry) ? '' : bytes(entry.size)}</span>
         <span class="muted">{date(entry.mtime)}</span>

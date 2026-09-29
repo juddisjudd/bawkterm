@@ -32,11 +32,16 @@
   $effect(() => app.rememberPath(pathKey, remote))
   $effect(() => app.rememberPath('local', local))
 
-  const quote = (p: string): string => `'${p.replace(/'/g, `'\\''`)}'`
+  // the login shell may be fish or csh, whose quoting differs; it only ever sees quotes, digits and backslashes here,
+  // and /bin/sh turns the octal escapes back into the path
+  function cdCommand(path: string): string {
+    const octal = [...new TextEncoder().encode(path)].map((b) => '\\' + b.toString(8).padStart(3, '0')).join('')
+    return `exec /bin/sh -c 'cd "$(printf "${octal}")" && exec "\${SHELL:-/bin/sh}" -l'`
+  }
 
   function openTerminal(path: string): void {
     const name = path.split('/').filter(Boolean).pop() ?? '/'
-    app.openTab('ssh', $state.snapshot(tab.target), `${remoteTitle} · ${name}`, `cd ${quote(path)} && exec "\${SHELL:-/bin/sh}" -l`)
+    app.openTab('ssh', $state.snapshot(tab.target), `${remoteTitle} · ${name}`, cdCommand(path))
   }
 
   let hostWrites = Promise.resolve()

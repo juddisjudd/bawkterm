@@ -8,14 +8,17 @@ import type { Prompter, Send } from '../prompts'
 import type { Vault } from '../vault'
 import { CancelledError, closeConnection, connect, type Connection } from './connect'
 import { RemoteEditor } from './remote-edit'
+import { call, isInside, localName, readBounded } from './sftp-util'
 
 const CHUNK = 32 * 1024
 const TEXT_MAX = 5 * 1024 * 1024
+const MAX_DEPTH = 64
 const BOM = Buffer.from([0xef, 0xbb, 0xbf])
 const PARALLEL = 32
 const S_IFMT = 0o170000
 const S_IFDIR = 0o040000
 const S_IFLNK = 0o120000
+const S_IFREG = 0o100000
 
 type Policy = 'replace' | 'rename' | 'skip'
 
@@ -48,10 +51,6 @@ interface Session {
 interface Planned {
   dirs: string[]
   files: { src: string; dest: string; size: number }[]
-}
-
-function call<T>(fn: (cb: (err: Error | null | undefined, value?: T) => void) => void): Promise<T> {
-  return new Promise((resolve, reject) => fn((err, value) => (err ? reject(err) : resolve(value as T))))
 }
 
 const isDir = (mode: number): boolean => (mode & S_IFMT) === S_IFDIR
@@ -199,8 +198,10 @@ export class SftpSessions {
     const sftp = this.get(sessionId)
     const st = await call<Stats>((cb) => sftp.stat(path, cb))
     if (st.isDirectory()) throw new Error('Folders cannot be opened in an editor')
-    if (st.size > TEXT_MAX) throw new Error('This file is larger than 5 MB. Download it or use an external editor.')
-    const data = await call<Buffer>((cb) => sftp.readFile(path, cb))
+    if (!st.isFile()) throw new Error('Only regular files can be opened in an editor')
+    const tooLarge = 'This file is larger than 5 MB. Download it or use an external editor.'
+    if (st.size > TEXT_MAX) throw new Error(tooLarge)
+    const data = await readBounded(sftp, path, TEXT_MAX, tooLarge)
     if (data.subarray(0, 8000).includes(0)) throw new Error('This looks like a binary file')
     const bom = data.subarray(0, 3).equals(BOM)
     let text: string
@@ -275,8 +276,10 @@ export class SftpSessions {
   download(sessionId: string, remotePaths: string[], localDir: string): void {
     const batch: Batch = {}
     for (const src of remotePaths) {
-      const name = posix.basename(src)
-      this.enqueue(sessionId, 'download', name, src, join(localDir, name), batch, (job) => this.runDownload(sessionId, job))
+      const name = localName(posix.basename(src))
+      const dest = join(localDir, name)
+      if (!isInside(localDir, dest)) throw new Error(`Refusing to download "${name}"`)
+      this.enqueue(sessionId, 'download', name, src, dest, batch, (job) => this.runDownload(sessionId, job))
     }
   }
 
@@ -409,22 +412,29 @@ export class SftpSessions {
     return plan
   }
 
+  // every local path is checked to stay inside dest; linked folders below the top level are skipped to avoid loops
   private async planRemote(sftp: SFTPWrapper, src: string, dest: string): Promise<Planned> {
     const plan: Planned = { dirs: [], files: [] }
-    const walk = async (s: string, d: string): Promise<void> => {
-      const st = await call<Stats>((cb) => sftp.stat(s, cb))
+    const walk = async (s: string, d: string, depth: number): Promise<void> => {
+      if (!isInside(dest, d)) throw new Error(`Refusing to write outside ${dest}`)
+      let st = await call<Stats>((cb) => (depth === 0 ? sftp.stat(s, cb) : sftp.lstat(s, cb)))
+      if (isLink(st.mode)) {
+        st = await call<Stats>((cb) => sftp.stat(s, cb))
+        if (isDir(st.mode)) return
+      }
       if (!isDir(st.mode)) {
-        plan.files.push({ src: s, dest: d, size: st.size })
+        if ((st.mode & S_IFMT) === S_IFREG) plan.files.push({ src: s, dest: d, size: st.size })
         return
       }
+      if (depth >= MAX_DEPTH) throw new Error(`Folders nested deeper than ${MAX_DEPTH} levels are not downloaded`)
       plan.dirs.push(d)
       const items = await call<{ filename: string }[]>((cb) => sftp.readdir(s, cb))
       for (const item of items) {
         if (item.filename === '.' || item.filename === '..') continue
-        await walk(posix.join(s, item.filename), join(d, item.filename))
+        await walk(posix.join(s, item.filename), join(d, localName(item.filename)), depth + 1)
       }
     }
-    await walk(src, dest)
+    await walk(src, dest, 0)
     return plan
   }
 

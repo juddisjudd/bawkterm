@@ -154,6 +154,11 @@ function startExec(command, stream, user) {
   const cmd = command.replace(/^sudo -n /, '')
   const cd = cmd.match(/^cd '((?:[^']|'\\'')*)' && exec /)
   if (cd) return startShell(stream, user, 'bawk-test', cd[1].replace(/'\\''/g, "'"))
+  const octal = cmd.match(/^exec \/bin\/sh -c 'cd "\$\(printf "((?:\\[0-7]{3})*)"\)" && exec /)
+  if (octal) {
+    const bytes = (octal[1].match(/\\[0-7]{3}/g) ?? []).map((e) => parseInt(e.slice(1), 8))
+    return startShell(stream, user, 'bawk-test', Buffer.from(bytes).toString('utf8'))
+  }
   if (!cmd.startsWith('docker ')) {
     stream.stderr.write(`${cmd.split(' ')[0]}: command not found\n`)
     return done(127)

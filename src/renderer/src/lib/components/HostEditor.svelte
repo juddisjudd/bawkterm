@@ -1,7 +1,7 @@
 <script lang="ts">
   import Eye from '@lucide/svelte/icons/eye'
   import EyeOff from '@lucide/svelte/icons/eye-off'
-  import { blankHost } from '@shared/defaults'
+  import { SECRET_KEPT, blankHost } from '@shared/defaults'
   import type { Host } from '@shared/types'
   import { app } from '$lib/state.svelte'
   import Drawer from './Drawer.svelte'
@@ -17,6 +17,25 @@
   let tags = $state(host.tags.join(', '))
   let showPassword = $state(false)
   let saving = $state(false)
+  // the window only learns that a password is saved; typing replaces it, the eye asks main for the real one
+  let savedPassword = $state(host.password === SECRET_KEPT)
+  if (host.password === SECRET_KEPT) host.password = ''
+
+  async function togglePassword(): Promise<void> {
+    if (showPassword || !savedPassword || host.password) {
+      showPassword = !showPassword
+      return
+    }
+    const password = await app.askMasterPassword('Showing a saved password needs your master password.', 'Show')
+    if (!password) return
+    try {
+      host.password = await window.api.secrets.reveal('host', host.id, password)
+      savedPassword = false
+      showPassword = true
+    } catch (err) {
+      app.fail(err)
+    }
+  }
 
   const identity = $derived(vault.identities.find((i) => i.id === host.identityId))
   const groups = $derived([...new Set(vault.hosts.map((h) => h.group).filter(Boolean))].sort())
@@ -39,6 +58,7 @@
     try {
       const saved = await window.api.hosts.save({
         ...$state.snapshot(host),
+        password: host.password || (savedPassword ? SECRET_KEPT : ''),
         label: host.label.trim() || host.address.trim(),
         address: host.address.trim(),
         port: Number(host.port) || 22,
@@ -128,17 +148,21 @@
         class="input"
         type={showPassword ? 'text' : 'password'}
         bind:value={host.password}
-        placeholder={identity?.password ? '•••••• (from identity)' : rdp ? 'Remote Desktop asks when empty' : 'ask when connecting'}
+        placeholder={savedPassword
+          ? 'saved (type to replace)'
+          : identity?.password
+            ? '•••••• (from identity)'
+            : rdp
+              ? 'Remote Desktop asks when empty'
+              : 'ask when connecting'}
         autocomplete="off"
       />
-      <button
-        type="button"
-        class="btn icon"
-        aria-label={showPassword ? 'Hide password' : 'Show password'}
-        onclick={() => (showPassword = !showPassword)}
-      >
+      <button type="button" class="btn icon" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={togglePassword}>
         {#if showPassword}<EyeOff />{:else}<Eye />{/if}
       </button>
+      {#if savedPassword && !host.password}
+        <button type="button" class="btn ghost" onclick={() => (savedPassword = false)}>Remove</button>
+      {/if}
     </div>
   </label>
   {#if rdp}
@@ -224,6 +248,8 @@
   }
   .with-button .btn {
     height: 32px;
+  }
+  .with-button .btn.icon {
     width: 32px;
   }
   .spacer {

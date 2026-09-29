@@ -10,6 +10,8 @@
   import { enrollPasskey } from '$lib/passkey'
 
   const s = $derived(app.settings)
+  const windows = window.api.platform === 'win32'
+  const keyring = windows ? 'Windows DPAPI' : 'the system keyring'
 
   async function set<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {
     await window.api.settings.save({ ...app.settings, [key]: value }).catch((err) => app.fail(err))
@@ -48,13 +50,18 @@
   let working = $state<'hello' | 'passkey' | null>(null)
 
   async function toggleMethod(kind: 'hello' | 'passkey', on: boolean): Promise<void> {
+    const password = on
+      ? await app.askMasterPassword('A new unlock method opens this vault without the password from now on.')
+      : ''
+    if (on && !password) return
     working = kind
     try {
+      if (on) await window.api.vault.verifyPassword(password!)
       if (kind === 'hello') {
-        await (on ? window.api.unlock.enableHello() : window.api.unlock.disableHello())
+        await (on ? window.api.unlock.enableHello(password!) : window.api.unlock.disableHello())
       } else if (on) {
         const { enrollment, output } = await enrollPasskey()
-        await window.api.unlock.enablePasskey(enrollment, output)
+        await window.api.unlock.enablePasskey(enrollment, output, password!)
       } else {
         await window.api.unlock.disablePasskey()
       }
@@ -68,10 +75,20 @@
     }
   }
 
+  let rememberKey = $state(0)
+
   async function setRemember(on: boolean): Promise<void> {
+    const password = on
+      ? await app.askMasterPassword(`Anyone signed in to this ${windows ? 'Windows ' : ''}account will be able to open the vault without the password.`)
+      : undefined
+    if (on && !password) {
+      rememberKey++
+      return
+    }
     try {
-      app.status = await window.api.vault.setRemember(on)
+      app.status = await window.api.vault.setRemember(on, password ?? undefined)
     } catch (err) {
+      rememberKey++
       app.fail(err)
     }
   }
@@ -79,7 +96,8 @@
   async function changePassword(): Promise<void> {
     const res = await app.ask({
       title: 'Change master password',
-      message: 'The vault is re-encrypted with the new password.',
+      message:
+        'The vault gets a new encryption key, so older copies and backups of it no longer open. Windows Hello and passkey unlock are turned off; set them up again afterwards.',
       fields: [
         { name: 'current', label: 'current password', secret: true },
         { name: 'next', label: 'new password', secret: true },
@@ -94,6 +112,7 @@
     }
     try {
       await window.api.vault.changePassword(res.values.current, res.values.next)
+      await app.refreshUnlock()
       app.toast('Master password changed')
     } catch (err) {
       app.fail(err)
@@ -213,13 +232,13 @@
         {#each editors as editor (editor.command)}
           <option value={editor.command}>{editor.name}</option>
         {/each}
-        <option value={DEFAULT_APP_EDITOR}>Windows default app</option>
+        <option value={DEFAULT_APP_EDITOR}>{windows ? 'Windows' : 'system'} default app</option>
         <option value="custom">other program…</option>
       </select>
     </label>
     {#if editorChoice === 'custom'}
       <div class="row">
-        <input class="input" value={s.editorCommand} placeholder='"C:\Program Files\Editor\editor.exe"' spellcheck="false"
+        <input class="input" value={s.editorCommand} placeholder={windows ? '"C:\\Program Files\\Editor\\editor.exe"' : '/usr/bin/editor'} spellcheck="false"
           aria-label="editor command" onchange={(e) => set('editorCommand', e.currentTarget.value.trim())} />
         <button type="button" class="btn" onclick={browseEditor}>Browse…</button>
       </div>
@@ -237,15 +256,22 @@
       <input class="input narrow" type="number" min="0" max="1440" value={s.autoLockMinutes}
         onchange={(e) => { const n = num(e, 0, 1440); if (n !== null) set('autoLockMinutes', n) }} />
     </label>
-    {#if app.status?.canRemember}
-      <div class="checks">
-        <Checkbox checked={app.status.remembered} label="unlock automatically on this device (uses Windows DPAPI)" onchange={setRemember} />
-      </div>
-    {/if}
+    <div class="checks">
+      <Checkbox checked={s.lockOnSystemLock} label={windows ? 'lock when Windows locks or goes to sleep' : 'lock when the computer goes to sleep'} onchange={(v) => set('lockOnSystemLock', v)} />
+      {#if app.status?.canRemember}
+        {#key rememberKey}
+          <Checkbox checked={app.status.remembered} label="unlock automatically on this device (uses {keyring})" onchange={setRemember} />
+        {/key}
+        {#if app.status.remembered}
+          <span class="hint indent">Anyone signed in to this {windows ? 'Windows ' : ''}account can open the vault without the password.</span>
+        {/if}
+      {/if}
+    </div>
     <div class="row">
       <span>master password</span>
       <button type="button" class="btn" onclick={changePassword}>Change…</button>
     </div>
+    {#if windows}
     <div class="row">
       <span class="stack">
         <span>Windows Hello (PIN, fingerprint or face)</span>
@@ -277,6 +303,7 @@
       {/if}
     </div>
     <p class="hint note">Your master password always works too. These only add faster ways to unlock.</p>
+    {/if}
   </section>
 
   <section>
@@ -290,6 +317,7 @@
       <dt><span class="kbd">ctrl+shift+w</span></dt><dd>close tab</dd>
       <dt><span class="kbd">ctrl+shift+c / v</span></dt><dd>copy / paste in terminal</dd>
       <dt><span class="kbd">ctrl+shift+l</span></dt><dd>lock vault</dd>
+      <dt><span class="kbd">ctrl+click</span></dt><dd>open a link in the terminal</dd>
     </dl>
   </section>
 
@@ -336,6 +364,9 @@
   }
   .note {
     margin-top: 8px;
+  }
+  .indent {
+    padding-left: 32px;
   }
   .narrow {
     width: 110px;

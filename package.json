@@ -1,7 +1,7 @@
 {
   "name": "bawkterm",
   "version": "0.3.2",
-  "description": "Personal SSH, SFTP and keychain client",
+  "description": "SSH, SFTP, Docker and Remote Desktop client with an encrypted vault",
   "main": "./out/main/index.js",
   "author": "CKH",
   "license": "UNLICENSED",
@@ -16,11 +16,13 @@
     "preview": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "svelte-check --tsconfig ./tsconfig.web.json --threshold warning",
-    "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
-    "dist": "electron-vite build && electron-builder --win --publish never",
+    "typecheck": "bun run typecheck:node && bun run typecheck:web",
+    "dist": "electron-vite build && electron-builder --publish never",
     "test-server": "node scripts/test-server.cjs",
     "release": "node scripts/release.mjs",
-    "icon": "node scripts/icon.mjs"
+    "icon": "node scripts/icon.mjs",
+    "dist:win": "electron-vite build && electron-builder --win --publish never",
+    "dist:linux": "electron-vite build && electron-builder --linux --publish never"
   },
   "dependencies": {
     "ssh2": "1.17.0"
@@ -56,5 +58,10 @@
     "typescript": "6.0.3",
     "vite": "7.3.6"
   },
-  "packageManager": "pnpm@11.25.0"
+  "packageManager": "bun@1.4.0",
+  "trustedDependencies": [
+    "esbuild"
+  ],
+  "homepage": "https://github.com/juddisjudd/bawkterm",
+  "desktopName": "bawkterm.desktop"
 }

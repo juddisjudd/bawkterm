@@ -137,12 +137,17 @@
     search = new SearchAddon()
     t.loadAddon(fit)
     t.loadAddon(search)
-    t.loadAddon(new WebLinksAddon((_e, uri) => window.api.app.openExternal(uri)))
+    t.loadAddon(new WebLinksAddon((e, uri) => (e.ctrlKey || e.metaKey) && window.api.app.openExternal(uri)))
     t.loadAddon(new Unicode11Addon())
     t.unicode.activeVersion = '11'
     if (s.osc52) {
-      // remote programs may set the local clipboard, never read it
-      t.loadAddon(new ClipboardAddon(undefined, { readText: () => '', writeText: (_sel, text) => window.api.app.copy(text) }))
+      // remote programs may set the local clipboard, never read it, and only from the tab in front
+      const writeText = (_sel: unknown, text: string): void => {
+        if (!active || !document.hasFocus()) return
+        window.api.app.copy(text)
+        app.toast(`${tab.title} copied text to your clipboard`)
+      }
+      t.loadAddon(new ClipboardAddon(undefined, { readText: () => '', writeText }))
     }
     t.open(el!)
     try {

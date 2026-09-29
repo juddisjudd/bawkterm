@@ -22,18 +22,22 @@ const api: BawkApi = {
     create: (password, remember) => invoke('vault:create', password, remember),
     unlock: (password, remember) => invoke('vault:unlock', password, remember),
     lock: () => invoke('vault:lock'),
-    setRemember: (on) => invoke('vault:setRemember', on),
+    setRemember: (on, password) => invoke('vault:setRemember', on, password),
+    verifyPassword: (password) => invoke('vault:verifyPassword', password),
     changePassword: (current, next) => invoke('vault:changePassword', current, next),
     onChanged: (cb) => on('vault:changed', cb)
   },
   unlock: {
     status: () => invoke('unlock:status'),
     hello: () => invoke('unlock:hello'),
-    enableHello: () => invoke('unlock:enableHello'),
+    enableHello: (password) => invoke('unlock:enableHello', password),
     disableHello: () => invoke('unlock:disableHello'),
     passkey: (prfOutput) => invoke('unlock:passkey', prfOutput),
-    enablePasskey: (enrollment, prfOutput) => invoke('unlock:enablePasskey', enrollment, prfOutput),
+    enablePasskey: (enrollment, prfOutput, password) => invoke('unlock:enablePasskey', enrollment, prfOutput, password),
     disablePasskey: () => invoke('unlock:disablePasskey')
+  },
+  secrets: {
+    reveal: (kind, id, password) => invoke('secrets:reveal', kind, id, password)
   },
   hosts: {
     save: (host) => invoke('hosts:save', host),
@@ -58,7 +62,7 @@ const api: BawkApi = {
     status: () => invoke('sync:status'),
     create: (url, token) => invoke('sync:create', url, token),
     join: (link) => invoke('sync:join', link),
-    link: () => invoke('sync:link'),
+    copyLink: (password) => invoke('sync:copyLink', password),
     now: () => invoke('sync:now'),
     disconnect: () => invoke('sync:disconnect'),
     onStatus: (cb) => on('sync:status', cb)

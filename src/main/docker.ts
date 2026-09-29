@@ -18,6 +18,8 @@ interface ExecResult {
 
 const CONTAINER_ID = /^[a-f0-9]{12,64}$/
 const EXEC_TIMEOUT = 30_000
+const MAX_OUTPUT = 16 * 1024 * 1024
+const ACTIONS: DockerAction[] = ['start', 'stop', 'restart']
 
 function exec(client: Client, command: string): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
@@ -29,8 +31,20 @@ function exec(client: Client, command: string): Promise<ExecResult> {
         stream.close()
         reject(new Error('The server took too long to answer'))
       }, EXEC_TIMEOUT)
-      stream.on('data', (d: Buffer) => (stdout += d.toString('utf8')))
-      stream.stderr.on('data', (d: Buffer) => (stderr += d.toString('utf8')))
+      const guard = (): void => {
+        if (stdout.length + stderr.length <= MAX_OUTPUT) return
+        clearTimeout(timer)
+        stream.close()
+        reject(new Error('The server sent too much output'))
+      }
+      stream.on('data', (d: Buffer) => {
+        stdout += d.toString('utf8')
+        guard()
+      })
+      stream.stderr.on('data', (d: Buffer) => {
+        stderr += d.toString('utf8')
+        guard()
+      })
       let code = 0
       stream.on('exit', (exitCode: number | null) => (code = exitCode ?? 0))
       stream.on('close', () => {
@@ -144,6 +158,7 @@ export class DockerSessions {
 
   async action(sessionId: string, containerId: string, action: DockerAction): Promise<void> {
     if (!CONTAINER_ID.test(containerId)) throw new Error('Invalid container id')
+    if (!ACTIONS.includes(action)) throw new Error('Unknown container action')
     const { conn, docker } = this.session(sessionId)
     const res = await exec(conn.client, `${docker} ${action} ${containerId}`)
     if (res.code !== 0) throw new Error(res.stderr.trim() || `docker ${action} failed`)

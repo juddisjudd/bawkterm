@@ -354,6 +354,16 @@ class AppState {
     return (await this.ask({ title, message, fields: [], confirmLabel, danger })) !== null
   }
 
+  async askMasterPassword(message: string, confirmLabel = 'Continue'): Promise<string | null> {
+    const res = await this.ask({
+      title: 'Confirm with your master password',
+      message,
+      fields: [{ name: 'password', label: 'master password', secret: true }],
+      confirmLabel
+    })
+    return res?.values.password || null
+  }
+
   async askText(title: string, label: string, value = '', confirmLabel = 'Save'): Promise<string | null> {
     const res = await this.ask({ title, fields: [{ name: 'value', label, value }], confirmLabel })
     const text = res?.values.value.trim()

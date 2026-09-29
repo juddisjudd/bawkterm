@@ -10,16 +10,17 @@ export const DEFAULT_SETTINGS: Settings = {
   scrollback: 10000,
   copyOnSelect: false,
   rightClickPaste: true,
-  autoLockMinutes: 0,
+  autoLockMinutes: 30,
   sftpShowHidden: false,
   keepAliveSec: 30,
   editorCommand: '',
   autoReconnect: true,
   pasteProtection: true,
-  osc52: true,
+  osc52: false,
   bellNotify: true,
   terminalTheme: 'auto',
-  restoreTabs: true
+  restoreTabs: true,
+  lockOnSystemLock: true
 }
 
 export function emptyVault(): VaultData {
@@ -37,6 +38,9 @@ export function emptyVault(): VaultData {
 }
 
 export const DEFAULT_APP_EDITOR = '@default'
+
+// stands in for a stored secret in data sent to the window; sending it back means "keep the saved value"
+export const SECRET_KEPT = '\u0000saved\u0000'
 
 export const FOLDER_COLORS: FolderColor[] = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']
 
@@ -71,7 +75,7 @@ export function emptyLocal(): LocalState {
 }
 
 export function emptySync(): SyncState {
-  return { config: null, lastSeq: 0, synced: {} }
+  return { config: null, lastSeq: 0, synced: {}, tombstones: {} }
 }
 
 export function blankIdentity(): Identity {

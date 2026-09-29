@@ -3,10 +3,11 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { EditorChoice } from '@shared/types'
+import { findProgram } from './system'
 
 const env = (name: string): string => process.env[name] ?? ''
 
-function candidates(): { name: string; paths: string[] }[] {
+function windowsCandidates(): { name: string; paths: string[] }[] {
   const local = join(env('LOCALAPPDATA'), 'Programs')
   const programs = [env('ProgramFiles'), env('ProgramFiles(x86)')].filter(Boolean)
   const scoop = join(env('SCOOP') || join(homedir(), 'scoop'), 'apps')
@@ -38,19 +39,42 @@ function candidates(): { name: string; paths: string[] }[] {
   ]
 }
 
+// graphical editors that are usually on PATH on Linux desktops
+const LINUX_EDITORS: [string, string[]][] = [
+  ['Visual Studio Code', ['code']],
+  ['VSCodium', ['codium']],
+  ['Cursor', ['cursor']],
+  ['Zed', ['zeditor', 'zed']],
+  ['Sublime Text', ['subl']],
+  ['Kate', ['kate']],
+  ['GNOME Text Editor', ['gnome-text-editor']],
+  ['gedit', ['gedit']],
+  ['KWrite', ['kwrite']],
+  ['Mousepad', ['mousepad']],
+  ['Xed', ['xed']],
+  ['Pluma', ['pluma']],
+  ['Geany', ['geany']]
+]
+
 export function detectEditors(): EditorChoice[] {
-  if (process.platform !== 'win32') return []
-  return candidates().flatMap(({ name, paths }) => {
-    const found = paths.find((p) => existsSync(p))
+  if (process.platform === 'win32') {
+    return windowsCandidates().flatMap(({ name, paths }) => {
+      const found = paths.find((p) => existsSync(p))
+      return found ? [{ name, command: `"${found}"` }] : []
+    })
+  }
+  return LINUX_EDITORS.flatMap(([name, commands]) => {
+    const found = commands.map(findProgram).find(Boolean)
     return found ? [{ name, command: `"${found}"` }] : []
   })
 }
 
 export async function pickEditor(win: BrowserWindow): Promise<string | null> {
+  const windows = process.platform === 'win32'
   const res = await dialog.showOpenDialog(win, {
     title: 'Choose a text editor',
-    defaultPath: env('ProgramFiles') || undefined,
-    filters: [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }],
+    defaultPath: windows ? env('ProgramFiles') || undefined : '/usr/bin',
+    filters: windows ? [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }] : undefined,
     properties: ['openFile']
   })
   const path = res.filePaths[0]

@@ -1,14 +1,17 @@
 import { shell } from 'electron'
-import { execFile, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { promises as fsp, unwatchFile, watchFile, type Stats as FsStats } from 'node:fs'
+import { promises as fsp, rmSync, unwatchFile, watchFile, type Stats as FsStats } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, posix } from 'node:path'
+import { extname, join, posix } from 'node:path'
 import type { SFTPWrapper, Stats } from 'ssh2'
 import type { EditInfo, EditState } from '@shared/types'
 import { DEFAULT_APP_EDITOR } from '@shared/defaults'
 import type { Prompter, Send } from '../prompts'
 import type { Vault } from '../vault'
+import { detectEditors } from '../editors'
+import { findProgram, splitCommand, system32 } from '../system'
+import { call, localName, readBounded } from './sftp-util'
 
 const MAX_BYTES = 20 * 1024 * 1024
 const POLL_MS = 700
@@ -26,27 +29,57 @@ interface Edit {
   pending: boolean
 }
 
-function call<T>(fn: (cb: (err: Error | null | undefined, value?: T) => void) => void): Promise<T> {
-  return new Promise((resolve, reject) => fn((err, value) => (err ? reject(err) : resolve(value as T))))
+const EDIT_ROOT = join(tmpdir(), 'bawkterm-edit')
+
+// types whose default Windows action opens them as text; anything else could run, so it goes to Notepad
+const SAFE_DEFAULT = new Set(
+  'txt log md markdown conf cfg cnf ini toml yaml yml json jsonc csv tsv env properties sql css scss less'.split(' ')
+)
+
+function launch(program: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = /\.(cmd|bat)$/i.test(program)
+    const child = script
+      ? spawn(system32('cmd.exe'), ['/d', '/s', '/c', `"${[program, ...args].map((a) => `"${a}"`).join(' ')}"`], {
+          windowsVerbatimArguments: true,
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true
+        })
+      : spawn(program, args, { detached: true, stdio: 'ignore' })
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
+  })
 }
 
-let codeOnPath: Promise<boolean> | undefined
-function hasVsCode(): Promise<boolean> {
-  codeOnPath ??= new Promise((resolve) =>
-    execFile(process.platform === 'win32' ? 'where' : 'which', ['code'], (err) => resolve(!err))
-  )
-  return codeOnPath
+// Notepad on Windows; on Linux the first graphical editor found on PATH
+function plainEditor(): string {
+  if (process.platform === 'win32') return system32('notepad.exe')
+  const [name] = splitCommand(detectEditors()[0]?.command ?? '')
+  if (!name) throw new Error('No text editor found. Choose one in settings → editor for "Edit in editor".')
+  return name
 }
 
 async function openInEditor(path: string, command: string): Promise<void> {
   const chosen = command.trim()
-  const cmd = chosen === DEFAULT_APP_EDITOR ? '' : chosen || ((await hasVsCode()) ? 'code' : '')
-  if (!cmd) {
+  if (chosen === DEFAULT_APP_EDITOR) {
+    if (!SAFE_DEFAULT.has(extname(path).slice(1).toLowerCase())) return launch(plainEditor(), [path])
     const error = await shell.openPath(path)
     if (error) throw new Error(error)
     return
   }
-  spawn(`${cmd} "${path}"`, { shell: true, detached: true, stdio: 'ignore', windowsHide: true }).unref()
+  if (!chosen) return launch(splitCommand(detectEditors()[0]?.command ?? '')[0] ?? plainEditor(), [path])
+  const [name, ...args] = splitCommand(chosen)
+  const program = findProgram(name)
+  if (!program) throw new Error(`Cannot find the editor "${name}". Check the editor in settings.`)
+  await launch(program, [...args, path])
+}
+
+export function sweepEditFiles(): void {
+  rmSync(EDIT_ROOT, { recursive: true, force: true })
 }
 
 export class RemoteEditor {
@@ -57,7 +90,9 @@ export class RemoteEditor {
     private prompter: Prompter,
     private send: Send,
     private vault: Vault
-  ) {}
+  ) {
+    vault.onChange((data) => data === null && this.stopIdle())
+  }
 
   private key(sessionId: string, remotePath: string): string {
     return `${sessionId}\n${remotePath}`
@@ -85,14 +120,17 @@ export class RemoteEditor {
     const sftp = this.sftpFor(sessionId)
     const st = await call<Stats>((cb) => sftp.stat(remotePath, cb))
     if (st.isDirectory()) throw new Error('Folders cannot be opened in an editor')
-    if (st.size > MAX_BYTES) throw new Error('This file is larger than 20 MB, download it instead')
+    if (!st.isFile()) throw new Error('Only regular files can be opened in an editor')
+    const tooLarge = 'This file is larger than 20 MB, download it instead'
+    if (st.size > MAX_BYTES) throw new Error(tooLarge)
 
-    const data = await call<Buffer>((cb) => sftp.readFile(remotePath, cb))
-    const dir = join(tmpdir(), 'bawkterm-edit', randomUUID())
+    const data = await readBounded(sftp, remotePath, MAX_BYTES, tooLarge)
+    const dir = join(EDIT_ROOT, randomUUID())
     await fsp.mkdir(dir, { recursive: true })
-    const safeName = posix.basename(remotePath).replace(/[^\w.-]/g, '_') || 'file'
-    const localPath = join(dir, safeName)
+    const localPath = join(dir, localName(posix.basename(remotePath).replace(/[^\w.-]/g, '_')))
     await fsp.writeFile(localPath, data)
+    // mark as downloaded so Windows warns before running it, like a browser download
+    await fsp.writeFile(`${localPath}:Zone.Identifier`, '[ZoneTransfer]\r\nZoneId=3\r\n').catch(() => {})
 
     const edit: Edit = {
       sessionId,
@@ -173,6 +211,19 @@ export class RemoteEditor {
     for (const edit of this.edits.values()) {
       if (edit.sessionId === sessionId && edit.pending) void this.upload(edit)
     }
+  }
+
+  // edits still waiting to upload are kept so a lock never throws away unsaved work
+  stopIdle(): void {
+    for (const edit of [...this.edits.values()]) {
+      if (!edit.pending && !edit.uploading) void this.stop(edit.sessionId, edit.remotePath)
+    }
+  }
+
+  disposeAll(): void {
+    for (const edit of this.edits.values()) unwatchFile(edit.localPath)
+    this.edits.clear()
+    sweepEditFiles()
   }
 
   stopSession(sessionId: string): void {

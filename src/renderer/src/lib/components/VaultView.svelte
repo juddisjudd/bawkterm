@@ -68,7 +68,7 @@
             <CloudAlert size={15} class="failed" />
             <span class="label">failed to sync</span>
           {:else}
-            <CloudCheck size={15} />
+            <CloudCheck size={15} class="synced" />
             <span class="label">synced</span>
           {/if}
         </button>
@@ -137,6 +137,9 @@
   }
   .label {
     flex: 1;
+  }
+  .sync :global(.synced) {
+    color: var(--success);
   }
   .sync :global(.failed) {
     color: var(--danger);

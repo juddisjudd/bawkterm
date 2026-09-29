@@ -6,47 +6,116 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+
+      - name: Check tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json ($version). Use bun run release."
+            exit 1
+          fi
+
+      - run: bun run typecheck
+
   windows:
+    needs: check
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: pnpm/action-setup@v6
-
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run dist:win
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: |
+            dist/*-setup.exe
+            dist/*-setup.exe.blockmap
+            dist/latest.yml
+          retention-days: 7
 
-      - run: pnpm install --frozen-lockfile
+  linux:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
 
-      - name: Check tag matches package.json
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
+      - uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-25.08
+
+      - name: Install packaging tools
         run: |
-          version="v$(node -p "require('./package.json').version")"
-          if [ "$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json ($version). Use pnpm release."
-            exit 1
-          fi
+          sudo apt-get update
+          sudo apt-get install -y rpm flatpak flatpak-builder
+          # flatpak-builder's bubblewrap needs user namespaces, which Ubuntu 24.04 restricts by default
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub \
+            org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 org.electronjs.Electron2.BaseApp//25.08
 
-      - run: pnpm typecheck
+      - run: bun install --frozen-lockfile
+      - run: bun run dist:linux
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz
+            dist/*.flatpak
+            dist/latest-linux.yml
+          retention-days: 7
 
-      - run: pnpm dist
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -55,16 +124,45 @@ jobs:
           if [ -n "$prev" ]; then
             printf '\n**Full changelog**: %s/%s/compare/%s...%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME" >> notes.md
           fi
-          gh release create "$GITHUB_REF_NAME" \
-            dist/*-setup.exe dist/*-setup.exe.blockmap dist/latest.yml \
+          (cd dist && sha256sum -- * > SHA256SUMS.txt)
+          gh release create "$GITHUB_REF_NAME" dist/* \
             --title "bawkterm $GITHUB_REF_NAME" \
             --notes-file notes.md \
             --verify-tag
 
-      - name: Keep installer from manual run
-        if: "!startsWith(github.ref, 'refs/tags/')"
-        uses: actions/upload-artifact@v7
+  aur:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
         with:
-          name: bawkterm-installer
-          path: dist/*-setup.exe
-          retention-days: 7
+          name: linux
+          path: dist
+
+      - name: Update the AUR package
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "::notice::AUR_SSH_PRIVATE_KEY is not set, so the AUR package was not updated. See packaging/aur/README.md."
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          sha=$(sha256sum "dist/bawkterm-$version.tar.gz" | cut -d' ' -f1)
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o IdentitiesOnly=yes"
+          git clone ssh://aur@aur.archlinux.org/bawkterm-bin.git aur
+          sh packaging/aur/render.sh "$version" "$sha" aur
+          cd aur
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add PKGBUILD .SRCINFO LICENSE
+          git diff --cached --quiet && exit 0
+          git commit -m "Update to $version"
+          git push origin HEAD:master

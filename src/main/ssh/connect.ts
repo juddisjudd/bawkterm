@@ -1,7 +1,14 @@
 import { existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import type { Duplex } from 'node:stream'
-import { Client, type AnyAuthMethod, type AuthenticationType, type NextAuthHandler, type ParsedKey } from 'ssh2'
+import {
+  Client,
+  type AnyAuthMethod,
+  type AuthenticationType,
+  type NextAuthHandler,
+  type ParsedKey,
+  type ServerHostKeyAlgorithm
+} from 'ssh2'
 import { hostKeyId } from '@shared/defaults'
 import type { ConnectTarget, PromptRequest, PromptResponse, SshKey } from '@shared/types'
 import { isEncryptedKeyError, parsePrivateKey, parsePublicBlob } from '../keys'
@@ -36,6 +43,16 @@ interface Resolved {
 }
 
 const MAX_HOPS = 5
+const SUPPORTED_HOST_KEY = [
+  'ssh-ed25519',
+  'ecdsa-sha2-nistp256',
+  'ecdsa-sha2-nistp384',
+  'ecdsa-sha2-nistp521',
+  'rsa-sha2-512',
+  'rsa-sha2-256',
+  'ssh-rsa',
+  'ssh-dss'
+]
 const READY_TIMEOUT = 20_000
 const OPENSSH_AGENT_PIPE = '\\\\.\\pipe\\openssh-ssh-agent'
 
@@ -100,16 +117,20 @@ async function verifyHostKey(key: Buffer, r: Resolved, ctx: ConnectContext): Pro
   const fingerprint = 'SHA256:' + createHash('sha256').update(key).digest('base64').replace(/=+$/, '')
   const keyType = parsePublicBlob(key)
   const id = hostKeyId(r.address, r.port)
-  const known = ctx.vault.get().knownHosts.find((k) => k.host === id && k.keyType === keyType)
+  const trusted = ctx.vault.get().knownHosts.filter((k) => k.host === id)
+  const known = trusted.find((k) => k.keyType === keyType)
   if (known?.fingerprint === fingerprint) return true
 
+  // a different key type for a host we already trust is treated as a changed key, not a new host
   const answer = await ctx.ask(
-    known
+    trusted.length
       ? {
           kind: 'hostkey-changed',
           title: 'Host key changed',
-          message: `The ${keyType} key for ${id} is not the one you trusted before. Someone may be intercepting this connection. Only continue if you know the server key was replaced.`,
-          detail: `trusted  ${known.fingerprint}\npresented ${fingerprint}`,
+          message: known
+            ? `The ${keyType} key for ${id} is not the one you trusted before. Someone may be intercepting this connection. Only continue if you know the server key was replaced.`
+            : `${id} offered a ${keyType} key, but you trusted a different kind of key for it before. Someone may be intercepting this connection. Only continue if you know the server keys were replaced.`,
+          detail: [...trusted.map((k) => `trusted   ${k.keyType} ${k.fingerprint}`), `presented ${keyType} ${fingerprint}`].join('\n'),
           fields: [],
           confirmLabel: 'Trust new key',
           danger: true
@@ -125,10 +146,24 @@ async function verifyHostKey(key: Buffer, r: Resolved, ctx: ConnectContext): Pro
   )
   if (!answer) return false
   await ctx.vault.mutate((d) => {
-    d.knownHosts = d.knownHosts.filter((k) => !(k.host === id && k.keyType === keyType))
+    d.knownHosts = d.knownHosts.filter((k) => k.host !== id)
     d.knownHosts.push({ host: id, keyType, fingerprint, addedAt: Date.now() })
   })
   return true
+}
+
+// like OpenSSH, ask for the key types already trusted for this host first so a server cannot steer us to another type
+function hostKeyOrder(
+  r: Resolved,
+  ctx: ConnectContext
+): Record<'remove' | 'prepend' | 'append', ServerHostKeyAlgorithm[]> | undefined {
+  const id = hostKeyId(r.address, r.port)
+  const algos = ctx.vault
+    .get()
+    .knownHosts.filter((k) => k.host === id)
+    .flatMap((k) => (k.keyType === 'ssh-rsa' ? ['rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa'] : [k.keyType]))
+    .filter((a): a is ServerHostKeyAlgorithm => SUPPORTED_HOST_KEY.includes(a))
+  return algos.length ? { remove: algos, prepend: algos, append: [] } : undefined
 }
 
 async function unlockKey(r: Resolved, ctx: ConnectContext): Promise<ParsedKey | null> {
@@ -324,6 +359,7 @@ function connectOne(r: Resolved, ctx: ConnectContext, sock?: Duplex): Promise<Cl
       readyTimeout: 0,
       keepaliveInterval: settings.keepAliveSec > 0 ? settings.keepAliveSec * 1000 : 0,
       keepaliveCountMax: 3,
+      algorithms: { serverHostKey: hostKeyOrder(r, local) },
       hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
         verifyHostKey(key, r, local).then(verify, () => verify(false))
       },
@@ -337,7 +373,12 @@ function connectOne(r: Resolved, ctx: ConnectContext, sock?: Duplex): Promise<Cl
 
 function forward(jump: Client, address: string, port: number): Promise<Duplex> {
   return new Promise((resolve, reject) => {
-    jump.forwardOut('127.0.0.1', 0, address, port, (err, stream) => (err ? reject(err) : resolve(stream)))
+    const timer = setTimeout(() => reject(new Error(`The jump host did not open a connection to ${address}:${port}`)), READY_TIMEOUT)
+    jump.forwardOut('127.0.0.1', 0, address, port, (err, stream) => {
+      clearTimeout(timer)
+      if (err) reject(err)
+      else resolve(stream)
+    })
   })
 }
 

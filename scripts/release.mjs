@@ -1,5 +1,5 @@
 // Bumps package.json, commits, tags vX.Y.Z and pushes; the tag triggers .github/workflows/release.yml.
-// Usage: pnpm release <patch|minor|major|x.y.z>
+// Usage: bun run release <patch|minor|major|x.y.z>
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 
@@ -10,7 +10,7 @@ const fail = (message) => {
 }
 
 const arg = process.argv[2]
-if (!arg) fail('usage: pnpm release <patch|minor|major|x.y.z>')
+if (!arg) fail('usage: bun run release <patch|minor|major|x.y.z>')
 if (run('git status --porcelain')) fail('commit or stash your changes first')
 const branch = run('git branch --show-current')
 if (branch !== 'main') fail(`release from main, not ${branch}`)

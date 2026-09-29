@@ -1,7 +1,7 @@
 // Builds the app icons from src/renderer/src/assets/chicken.svg (one black path on transparent).
 // Writes build/icon.{svg,png,ico} (white rooster on a dark tile, the exe default) and
 // build/icon-light.{png,ico} (black rooster on a light tile, swapped in at runtime in light mode).
-// Usage: pnpm icon [previewDir]
+// Usage: bun run icon [previewDir]
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Resvg } from '@resvg/resvg-js'
