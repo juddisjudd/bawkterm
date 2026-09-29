@@ -20,7 +20,12 @@
   })
 
   $effect(() => {
-    document.documentElement.dataset.theme = app.theme
+    const root = document.documentElement
+    root.dataset.theme = app.theme
+    const colors = app.appColors
+    if (!colors) return
+    for (const [name, value] of Object.entries(colors)) root.style.setProperty(name, value)
+    return () => Object.keys(colors).forEach((name) => root.style.removeProperty(name))
   })
 
   function onkeydown(e: KeyboardEvent): void {

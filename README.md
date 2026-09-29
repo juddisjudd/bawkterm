@@ -1,6 +1,6 @@
 # bawkterm
 
-A desktop client for Windows and Linux for SSH, SFTP, Docker-over-SSH and Remote Desktop, with an encrypted vault for your hosts, passwords and keys, and optional end-to-end encrypted sync between your devices through [bawksync](https://github.com/juddisjudd/bawksync).
+A desktop client for SSH, SFTP, Docker over SSH and Remote Desktop, on Windows and Linux. It keeps your hosts, passwords and keys in an encrypted vault, and can sync them between your devices, end-to-end encrypted, through [bawksync](https://github.com/juddisjudd/bawksync).
 
 Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled after [opencode.ai](https://opencode.ai).
 
@@ -10,7 +10,7 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 
 ## Features
 
-- **SSH terminal**: tabs with WebGL rendering, jump hosts (chained), agent auth (OpenSSH agent or Pageant), keyboard-interactive and key auth, auto-reconnect, a per-host startup command, paste protection, scrollback search, per-tab zoom, 12 themes, tabs reopened on launch.
+- **SSH terminal**: tabs with WebGL rendering, jump hosts (chained), agent auth (OpenSSH agent or Pageant), keyboard-interactive and key auth, auto-reconnect, a per-host startup command, paste protection, scrollback search, per-tab zoom, 13 themes (the app's colors can match the terminal's), tabs reopened on launch.
 - **SFTP**: side-by-side local and remote panes, drag and drop (also from Explorer), recursive transfers with Replace / Keep both / Skip, type-to-filter, favorite folders and folder colors per host, "Open terminal here".
 - **Built-in editor**: "Edit in editor" opens remote files in a tab with syntax highlighting for about 100 languages, search, and Ctrl+S to save back. You can pick VS Code, another installed editor or any program instead.
 - **Keychain**: generate ed25519, RSA and ECDSA keys; import OpenSSH, PEM and PuTTY keys; reusable identities (username plus password or key); import hosts from `~/.ssh/config`.
@@ -18,7 +18,7 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 - **Remote Desktop hosts**: opens Windows Remote Desktop (or FreeRDP 3 on Linux) already signed in, optionally through an SSH jump host.
 - **Snippets**: saved commands you run from Ctrl+Shift+S.
 - **Unlock options**: master password, plus optional Windows Hello, a passkey (phone, security key or this PC) or auto-unlock through Windows DPAPI or the Linux keyring.
-- **Sync** through a bawksync server you run yourself ([self-hosting guide](https://github.com/juddisjudd/bawksync/blob/main/docs/Home.md)). Everything is encrypted on your device first.
+- **Sync**: through a bawksync server you run yourself ([self-hosting guide](https://github.com/juddisjudd/bawksync/blob/main/docs/Home.md)). Everything is encrypted on your device first.
 
 | SFTP with favorites and folder colors | Built-in editor | Docker over SSH |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ Download `bawkterm-<version>-setup.exe` and run it. The installer is not code-si
 
 Linux notes:
 
-- **AppImage on Ubuntu 24.04 and newer:** Ubuntu restricts the kernel feature Chromium's sandbox needs. The AppImage then starts *without* the sandbox, which weakens a layer of protection. Prefer the `.deb` or `.rpm`: their install adds an AppArmor rule so the sandbox works. To keep the sandbox for the AppImage, save this as `/etc/apparmor.d/bawkterm` (adjust the path), then run `sudo apparmor_parser -r /etc/apparmor.d/bawkterm`:
+- **AppImage on Ubuntu 24.04 and newer:** Ubuntu restricts the kernel feature Chromium's sandbox needs. The AppImage then starts *without* the sandbox, so you lose one layer of protection. Prefer the `.deb` or `.rpm`: their install adds an AppArmor rule so the sandbox works. To keep the sandbox for the AppImage, save this as `/etc/apparmor.d/bawkterm` (adjust the path), then run `sudo apparmor_parser -r /etc/apparmor.d/bawkterm`:
 
   ```
   abi <abi/4.0>,
@@ -63,7 +63,7 @@ Linux notes:
 
 ## Security model
 
-bawkterm holds the keys to your servers, so this section says plainly what it protects and what it does not. Found a problem? See [SECURITY.md](SECURITY.md).
+bawkterm holds the keys to your servers. To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ### The vault
 
@@ -91,7 +91,7 @@ bawkterm holds the keys to your servers, so this section says plainly what it pr
 
 ### Talking to servers
 
-- **Host keys**: trust on first use with SHA256 fingerprints. A changed key, or a key of a different type than the one you trusted, blocks the connection with a warning that starts on **Cancel**. Jump hosts are checked too.
+- **Host keys**: trust on first use with SHA256 fingerprints. A changed key, or a key of a different type than the one you trusted, blocks the connection with a warning that has **Cancel** selected. Jump hosts are checked too.
 - **SFTP downloads**: remote file names are made safe for Windows before anything is written. A server cannot write outside the folder you chose, overwrite device names or follow symlinked folders. Reads have size limits that a server cannot bypass.
 - **Edit in editor**: temp copies are marked as downloaded from the internet and deleted when you lock, quit or next start. "Windows default app" only opens text types; anything that could run goes to Notepad.
 - **Remote Desktop**: on Windows, the password goes to the Windows credential store through a private pipe, never on a command line. It lasts only for your Windows session and is deleted after launch. On Linux, FreeRDP receives it through its standard input.
@@ -101,7 +101,7 @@ bawkterm holds the keys to your servers, so this section says plainly what it pr
 ### Sync
 
 - Each item is encrypted on your device with AES-256-GCM, and padded to whole KiB. The server stores an opaque record ID (an HMAC of the item ID), a timestamp and the ciphertext. It never sees names, addresses, usernames, passwords or keys.
-- The server cannot read or forge items. The things it could still do are all handled:
+- The server cannot read or forge items. What else a hostile server can and cannot do:
   - It cannot make you delete one: deletions are decided inside the encrypted data.
   - It cannot bring back a deleted item by replaying an old copy: devices remember deletions.
   - It can refuse service or lose data. Your devices keep their local copies.

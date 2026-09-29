@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/defaults'
+import { appColors, findTerminalTheme } from './theme'
 import type {
   EditInfo,
   ConnectTarget,
@@ -21,6 +22,7 @@ import type {
 } from '@shared/types'
 
 export type Section = 'hosts' | 'keychain' | 'snippets' | 'known' | 'settings'
+export type SettingsTab = 'appearance' | 'terminal' | 'connections' | 'files' | 'sync' | 'security' | 'updates' | 'shortcuts'
 export type TabKind = 'ssh' | 'sftp' | 'docker' | 'edit'
 
 export interface Tab {
@@ -78,6 +80,7 @@ class AppState {
   tabs = $state<Tab[]>([])
   #active = $state('home')
   section = $state<Section>('hosts')
+  settingsTab = $state<SettingsTab>('appearance')
   modals = $state<Modal[]>([])
   toasts = $state<Toast[]>([])
   menu = $state<Menu | null>(null)
@@ -91,9 +94,14 @@ class AppState {
   unlockStatus = $state<UnlockStatus | null>(null)
   systemDark = $state(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  theme = $derived<'dark' | 'light'>(
-    this.settings.theme === 'system' ? (this.systemDark ? 'dark' : 'light') : this.settings.theme
-  )
+  theme = $derived.by<'dark' | 'light'>(() => {
+    const setting = this.settings.theme
+    if (setting === 'dark' || setting === 'light') return setting
+    const terminal = setting === 'terminal' ? findTerminalTheme(this.settings.terminalTheme) : undefined
+    if (terminal && terminal.id !== 'auto') return terminal.dark ? 'dark' : 'light'
+    return this.systemDark ? 'dark' : 'light'
+  })
+  appColors = $derived(this.settings.theme === 'terminal' ? appColors(this.settings.terminalTheme) : null)
 
   private toastSeq = 0
   private restored = false

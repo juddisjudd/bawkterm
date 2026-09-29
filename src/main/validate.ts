@@ -171,7 +171,7 @@ export function cleanTarget(v: unknown): ConnectTarget {
   }
 }
 
-const THEMES = ['system', 'dark', 'light'] as const
+const THEMES = ['system', 'dark', 'light', 'terminal'] as const
 const CURSORS = ['block', 'bar', 'underline'] as const
 
 // partial on purpose: the renderer sends whole settings objects, unknown keys are dropped

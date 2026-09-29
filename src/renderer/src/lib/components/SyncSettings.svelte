@@ -81,48 +81,37 @@
   }
 </script>
 
-<section>
-  <h2>sync</h2>
-  {#if !config}
-    <p class="lead">
-      Keep hosts, keys, identities, snippets and trusted host keys the same on every device. Everything is encrypted on
-      this device first; the server only stores ciphertext. Settings like theme and fonts stay per device.
-    </p>
-    <div class="actions">
-      <button type="button" class="btn strong" disabled={busy} onclick={create}>Set up new sync</button>
-      <button type="button" class="btn" disabled={busy} onclick={join}>Join with sync link</button>
-    </div>
-  {:else}
-    <div class="state">
-      {#if status.phase === 'syncing'}
-        <RefreshCw size={15} class="spin" /><span>syncing…</span>
-      {:else if status.phase === 'error'}
-        <CloudAlert size={15} class="failed" /><span>failed to sync</span>
-      {:else}
-        <CloudCheck size={15} class="synced" /><span>synced</span><span class="muted">· last synced {ago(status.lastSyncAt)}</span>
-      {/if}
-    </div>
-    {#if status.phase === 'error' && status.error}<p class="error selectable">{status.error}</p>{/if}
-    <p class="muted server selectable">{config.url}</p>
-    <div class="actions">
-      <button type="button" class="btn" disabled={busy || status.phase === 'syncing'} onclick={() => run(() => window.api.sync.now())}>
-        Sync now
-      </button>
-      <button type="button" class="btn" disabled={busy} onclick={copyLink}>Copy sync link</button>
-      <button type="button" class="btn ghost danger" disabled={busy} onclick={disconnect}>Stop syncing</button>
-    </div>
-  {/if}
-</section>
+{#if !config}
+  <p class="lead">
+    Keeps hosts, keys, identities, snippets and trusted host keys the same on all your devices. Items are encrypted on
+    this device before upload, so the server stores only ciphertext. Settings are not synced.
+  </p>
+  <div class="actions">
+    <button type="button" class="btn strong" disabled={busy} onclick={create}>Set up new sync</button>
+    <button type="button" class="btn" disabled={busy} onclick={join}>Join with sync link</button>
+  </div>
+{:else}
+  <div class="state">
+    {#if status.phase === 'syncing'}
+      <RefreshCw size={15} class="spin" /><span>syncing…</span>
+    {:else if status.phase === 'error'}
+      <CloudAlert size={15} class="failed" /><span>failed to sync</span>
+    {:else}
+      <CloudCheck size={15} class="synced" /><span>synced</span><span class="muted">· last synced {ago(status.lastSyncAt)}</span>
+    {/if}
+  </div>
+  {#if status.phase === 'error' && status.error}<p class="error selectable">{status.error}</p>{/if}
+  <p class="muted server selectable">{config.url}</p>
+  <div class="actions">
+    <button type="button" class="btn" disabled={busy || status.phase === 'syncing'} onclick={() => run(() => window.api.sync.now())}>
+      Sync now
+    </button>
+    <button type="button" class="btn" disabled={busy} onclick={copyLink}>Copy sync link</button>
+    <button type="button" class="btn ghost danger" disabled={busy} onclick={disconnect}>Stop syncing</button>
+  </div>
+{/if}
 
 <style>
-  section {
-    margin-bottom: 28px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border-weak);
-  }
-  h2 {
-    margin-bottom: 12px;
-  }
   .lead {
     margin-bottom: 14px;
     line-height: 1.8;

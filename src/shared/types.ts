@@ -114,7 +114,7 @@ export interface SyncStatus {
   error?: string
 }
 
-export type ThemeSetting = 'system' | 'dark' | 'light'
+export type ThemeSetting = 'system' | 'dark' | 'light' | 'terminal'
 export type CursorStyle = 'block' | 'bar' | 'underline'
 
 export interface Settings {

@@ -66,7 +66,10 @@
           type="button"
           class="item sync"
           title={syncShown === 'error' ? app.syncStatus.error : `Last synced ${ago(app.syncStatus.lastSyncAt)}`}
-          onclick={() => (app.section = 'settings')}
+          onclick={() => {
+            app.settingsTab = 'sync'
+            app.section = 'settings'
+          }}
         >
           {#if syncShown === 'syncing'}
             <RefreshCw size={15} class="spin" />

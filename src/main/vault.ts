@@ -3,7 +3,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scrypt } from 'node:crypto'
 import { DEFAULT_SETTINGS, emptyLocal, emptySync, emptyVault } from '@shared/defaults'
-import type { VaultData, VaultStatus } from '@shared/types'
+import type { Settings, VaultData, VaultStatus } from '@shared/types'
 import { writeFileAtomic } from './files'
 
 interface KdfParams {
@@ -104,6 +104,17 @@ export function unwrapKey(kek: Buffer, wrapped: Wrapped, purpose: string): Buffe
   return decrypt(kek, wrapped, Buffer.from(`bawkterm-key/${purpose}`))
 }
 
+const RENAMED_TERMINAL_THEMES: Record<string, string> = {
+  'bawk-dark': 'auto',
+  'bawk-light': 'auto',
+  'one-half-dark': 'one-dark'
+}
+
+function renameThemes(settings: Settings): Settings {
+  const renamed = RENAMED_TERMINAL_THEMES[settings.terminalTheme]
+  return renamed ? { ...settings, terminalTheme: renamed } : settings
+}
+
 function normalize(raw: Partial<VaultData>): VaultData {
   const base = emptyVault()
   return {
@@ -121,7 +132,7 @@ function normalize(raw: Partial<VaultData>): VaultData {
     identities: (raw.identities ?? base.identities).map((i) => ({ ...i, updatedAt: i.updatedAt ?? i.createdAt })),
     knownHosts: raw.knownHosts ?? base.knownHosts,
     snippets: raw.snippets ?? base.snippets,
-    settings: { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) },
+    settings: renameThemes({ ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) }),
     sync: { ...emptySync(), ...(raw.sync ?? {}) },
     local: { ...emptyLocal(), ...(raw.local ?? {}) }
   }
