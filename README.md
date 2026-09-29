@@ -107,12 +107,14 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
   - It can refuse service or lose data. Your devices keep their local copies.
 - Plain `http://` is only allowed to private IP addresses and `localhost`.
 - The sync link contains the server token and the encryption key. Anyone who has it can read your vault. Copying it asks for the master password, and it is cleared from the clipboard after a minute. Joining with a link warns you that everything on the device will be uploaded.
+- Anyone with the token can erase the server copy and start over with a new key ("Set up new sync" offers this when the server already holds data). Devices that still sync with the old key see an encrypted marker they cannot open, report that sync was reset, and upload nothing more.
 
 ### What bawkterm does not protect against
 
 - **Malware running as your user account.** It can read the app's memory while the vault is unlocked, log your keystrokes, or use auto-unlock if you turned it on.
 - **Open sessions while locked.** Locking hides everything and requires unlocking, but SSH and SFTP sessions stay connected.
 - **A leaked sync link or server token.** Treat them like passwords. To rotate them, set up sync again with a new token.
+- **Losing every device and the sync link.** The server cannot read your data, so it cannot give it back. bawkterm asks you to save the sync link when you set up sync; keep it in a password manager.
 - **A hijacked release.** Builds are not code-signed yet, so the updater trusts whatever this repository's GitHub releases contain. Someone who took over the maintainer's GitHub account could publish a malicious update.
 - **Forks sharing the passkey site name.** Passkeys are tied to `bawkterm.bawkbawk.net` (the app serves itself from that name locally, without network access). Forks should change `APP_HOST` in `src/main/index.ts`.
 

@@ -48,7 +48,7 @@
       <Checkbox label={modal.checkbox.label} bind:checked />
     {/if}
     <div class="actions">
-      <button type="button" class="btn ghost" onclick={() => close(false)} {@attach focusOnMount(guarded)}>Cancel</button>
+      <button type="button" class="btn ghost" onclick={() => close(false)} {@attach focusOnMount(guarded)}>{modal.cancelLabel ?? 'Cancel'}</button>
       {#if modal.choices}
         {#each modal.choices as c, i (c.id)}
           <button

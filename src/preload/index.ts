@@ -60,7 +60,8 @@ const api: BawkApi = {
   },
   sync: {
     status: () => invoke('sync:status'),
-    create: (url, token) => invoke('sync:create', url, token),
+    check: (url, token) => invoke('sync:check', url, token),
+    create: (url, token, erase) => invoke('sync:create', url, token, erase),
     join: (link) => invoke('sync:join', link),
     copyLink: (password) => invoke('sync:copyLink', password),
     now: () => invoke('sync:now'),

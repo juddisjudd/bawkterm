@@ -78,7 +78,9 @@ export interface BawkApi {
   }
   sync: {
     status(): Promise<SyncStatus>
-    create(url: string, token: string): Promise<void>
+    check(url: string, token: string): Promise<number>
+    // erase: remove what the server holds for this token first
+    create(url: string, token: string, erase?: boolean): Promise<void>
     join(link: string): Promise<void>
     copyLink(password: string): Promise<void>
     now(): Promise<void>

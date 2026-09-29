@@ -14,6 +14,10 @@ const PUSH_CHUNK = 200
 const FOCUS_THROTTLE_MS = 60_000
 const RETRY_MS = [30_000, 60_000, 120_000, 300_000]
 const LINK_PREFIX = 'bawksync:'
+// A record under this fixed, readable id, encrypted with the space's key. A device that finds one it cannot
+// decrypt knows another device erased the space and started over with a new key.
+const MARKER_ID = 'space'
+const RESET_MESSAGE = 'Sync was reset from another device. Choose Stop syncing, then join again with the new sync link.'
 
 interface RemoteRecord {
   id: string
@@ -68,6 +72,22 @@ class RecordCipher {
 
   // returns null for anything that does not decrypt or does not belong under this id
   open(id: string, blob: string): Payload | null {
+    const payload = this.decrypt(id, blob)
+    if (!payload) return null
+    const expected = Buffer.from(this.id(payload.k))
+    const actual = Buffer.from(id)
+    return expected.length === actual.length && timingSafeEqual(expected, actual) ? payload : null
+  }
+
+  sealMarker(): string {
+    return this.seal(MARKER_ID, { k: MARKER_ID, v: null, t: Date.now() })
+  }
+
+  ownsMarker(blob: string): boolean {
+    return this.decrypt(MARKER_ID, blob)?.k === MARKER_ID
+  }
+
+  private decrypt(id: string, blob: string): Payload | null {
     const raw = Buffer.from(blob, 'base64url')
     if (raw.length < 28) return null
     const decipher = createDecipheriv('aes-256-gcm', this.enc, raw.subarray(0, 12), { authTagLength: 16 })
@@ -80,10 +100,7 @@ class RecordCipher {
     } catch {
       return null
     }
-    if (typeof payload?.k !== 'string' || !Number.isSafeInteger(payload.t)) return null
-    const expected = Buffer.from(this.id(payload.k))
-    const actual = Buffer.from(id)
-    return expected.length === actual.length && timingSafeEqual(expected, actual) ? payload : null
+    return typeof payload?.k === 'string' && Number.isSafeInteger(payload.t) ? payload : null
   }
 }
 
@@ -246,7 +263,7 @@ async function request<T>(config: SyncConfig, method: string, path: string, body
     throw new Error(`Cannot reach the sync server${cause ? ` (${cause})` : ''}`)
   }
   if (res.status === 401) throw new Error('The sync server rejected the token')
-  if (!res.ok) throw new Error(`Sync server error ${res.status}`)
+  if (!res.ok) throw Object.assign(new Error(`Sync server error ${res.status}`), { status: res.status })
   if (Number(res.headers.get('content-length') ?? 0) > MAX_RESPONSE) throw new Error('The sync server sent too much data')
   const text = await res.text()
   if (text.length > MAX_RESPONSE) throw new Error('The sync server sent too much data')
@@ -372,6 +389,11 @@ export class SyncEngine {
         }
         if (page.more && page.seq === since) throw new Error('The sync server sent an invalid answer')
         for (const r of page.records) {
+          if (r?.id === MARKER_ID) {
+            // stop before pushing, so this device's key never mixes into a space another device took over
+            if (typeof r.blob !== 'string' || !cipher.ownsMarker(r.blob)) throw new Error(RESET_MESSAGE)
+            continue
+          }
           const payload = typeof r?.id === 'string' && typeof r.blob === 'string' ? cipher.open(r.id, r.blob) : null
           if (payload) incoming.push(payload)
           else unreadable++
@@ -426,10 +448,19 @@ export class SyncEngine {
         for (const [id, c] of byId) (lost.has(id) ? rejected.push(c.rkey) : accepted.push(c))
       }
 
+      // written after this device's own items, so bawkterm 0.4 devices that sample the first record can still join
+      const marking = !this.vault.get().sync.marked
+      if (marking) {
+        await request(config, 'POST', '/v1/records', {
+          records: [{ id: MARKER_ID, updatedAt: Date.now(), deleted: false, blob: cipher.sealMarker() }]
+        })
+      }
+
       this.lastSyncAt = Date.now()
-      if (accepted.length || rejected.length || this.vault.get().sync.lastError) {
+      if (accepted.length || rejected.length || marking || this.vault.get().sync.lastError) {
         await this.vault.mutate((d) => {
           if (!sameConfig(d)) return
+          d.sync.marked = true
           for (const c of accepted) {
             if (c.value === null) {
               delete d.sync.synced[c.rkey]
@@ -473,14 +504,26 @@ export class SyncEngine {
     }
   }
 
-  async create(rawUrl: string, token: string): Promise<void> {
+  // how many records the server already holds for this token, so the window can offer to erase them first
+  async check(rawUrl: string, token: string): Promise<number> {
+    if (!token.trim()) throw new Error('Enter the server token')
+    return checkServer({ url: normalizeServerUrl(rawUrl), token: token.trim(), key: '' })
+  }
+
+  async create(rawUrl: string, token: string, erase = false): Promise<void> {
     const config: SyncConfig = { url: normalizeServerUrl(rawUrl), token: token.trim(), key: randomBytes(32).toString('base64url') }
     if (!config.token) throw new Error('Enter the server token')
     const existing = await checkServer(config)
-    if (existing > 0) {
+    if (existing > 0 && !erase) {
       throw new Error(
         'This server already holds a synced vault for that token. On a device that already syncs, copy its sync link and use "Join" instead.'
       )
+    }
+    if (existing > 0) {
+      await request(config, 'DELETE', '/v1/records').catch((err) => {
+        const status = (err as { status?: number }).status
+        throw status === 404 || status === 405 ? new Error('This bawksync server is too old to erase its copy. Update it, then try again.') : err
+      })
     }
     await this.vault.mutate((d) => {
       d.sync = { ...emptySync(), config }
@@ -490,11 +533,11 @@ export class SyncEngine {
 
   async join(link: string): Promise<void> {
     const config = decodeLink(link)
-    new RecordCipher(config.key)
+    const cipher = new RecordCipher(config.key)
     await checkServer(config)
     const first = await request<{ records: RemoteRecord[] }>(config, 'GET', '/v1/records?since=0&limit=1')
     const sample = first.records?.[0]
-    if (sample && !new RecordCipher(config.key).open(sample.id, sample.blob)) {
+    if (sample && !(sample.id === MARKER_ID ? cipher.ownsMarker(sample.blob) : cipher.open(sample.id, sample.blob))) {
       throw new Error('Sync key does not match the data on the server')
     }
     await this.vault.mutate((d) => {

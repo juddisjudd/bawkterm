@@ -46,6 +46,7 @@ export interface Modal {
   detail?: string
   fields: PromptField[]
   confirmLabel: string
+  cancelLabel?: string
   danger?: boolean
   checkbox?: { name: string; label: string }
   choices?: PromptChoice[]

@@ -90,6 +90,8 @@ export interface SyncState {
   synced: Record<string, number>
   // deletion times, so a replayed old copy of a deleted item is not brought back
   tombstones: Record<string, number>
+  // this device has written the reset marker for its key
+  marked?: boolean
   lastSyncAt?: number
   lastError?: string
 }

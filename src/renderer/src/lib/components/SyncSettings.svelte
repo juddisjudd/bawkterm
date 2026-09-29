@@ -9,13 +9,15 @@
   const status = $derived(app.syncStatus)
   let busy = $state(false)
 
-  async function run(task: () => Promise<unknown>, done?: string): Promise<void> {
+  async function run(task: () => Promise<unknown>, done?: string): Promise<boolean> {
     busy = true
     try {
       await task()
       if (done) app.toast(done)
+      return true
     } catch (err) {
       app.fail(err)
+      return false
     } finally {
       busy = false
     }
@@ -32,7 +34,34 @@
       ],
       confirmLabel: 'Start syncing'
     })
-    if (res) await run(() => window.api.sync.create(res.values.url, res.values.token), 'Sync is on')
+    if (!res) return
+    const { url, token } = res.values
+    let held = 0
+    if (!(await run(async () => (held = await window.api.sync.check(url, token))))) return
+    const erase =
+      held > 0 &&
+      (await app.confirm(
+        'This server already has a synced vault',
+        'If another device still syncs with it, cancel and use Join with sync link instead. Otherwise, erase the server copy and upload this vault. The erased copy cannot be recovered.',
+        'Erase and start fresh'
+      ))
+    if (held > 0 && !erase) return
+    if (await run(() => window.api.sync.create(url, token, erase), 'Sync is on')) await offerLink()
+  }
+
+  async function offerLink(): Promise<void> {
+    const res = await app.ask({
+      title: 'Save your sync link',
+      message:
+        'It is the only way to get your synced data back if you lose every device. Keep it in a password manager. Anyone who has it can read your vault.',
+      fields: [{ name: 'password', label: 'master password', secret: true }],
+      confirmLabel: 'Copy sync link',
+      cancelLabel: 'Later'
+    })
+    const password = res?.values.password
+    if (password) {
+      await run(() => window.api.sync.copyLink(password), 'Sync link copied. It is cleared from the clipboard in a minute.')
+    }
   }
 
   function linkServer(link: string): string | null {
@@ -109,6 +138,7 @@
     <button type="button" class="btn" disabled={busy} onclick={copyLink}>Copy sync link</button>
     <button type="button" class="btn ghost danger" disabled={busy} onclick={disconnect}>Stop syncing</button>
   </div>
+  <p class="hint">Keep a copy of your sync link in a password manager. If you lose every device, it is the only way to get your synced data back.</p>
 {/if}
 
 <style>
@@ -135,6 +165,11 @@
   }
   .server {
     margin: 4px 0 14px 25px;
+    font-size: 12px;
+  }
+  .hint {
+    margin-top: 14px;
+    color: var(--text-weak);
     font-size: 12px;
   }
   .actions {

@@ -284,7 +284,10 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   })
 
   handle('sync:status', () => sync.status())
-  handle('sync:create', (url, token) => sync.create(line(url, 'server address', 2048), line(token, 'token', 1024)))
+  handle('sync:check', (url, token) => sync.check(line(url, 'server address', 2048), line(token, 'token', 1024)))
+  handle('sync:create', (url, token, erase) =>
+    sync.create(line(url, 'server address', 2048), line(token, 'token', 1024), erase === true)
+  )
   handle('sync:join', (link) => sync.join(line(link, 'sync link', 8192)))
   // the link is the server token plus the encryption key, so it goes straight to the clipboard and is wiped again
   handle('sync:copyLink', async (pw) => {
