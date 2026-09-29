@@ -18,6 +18,7 @@
   import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
   import { app, type Tab } from '$lib/state.svelte'
   import { detectLanguage, editorHighlight, editorTheme } from '$lib/editor'
+  import { MOD } from '$lib/keys'
 
   let { tab, active }: { tab: Tab; active: boolean } = $props()
 
@@ -203,7 +204,7 @@
     <span>{crlf ? 'CRLF' : 'LF'}{file?.bom ? ' · BOM' : ''}</span>
     <button type="button" class="btn small ghost" aria-pressed={wrap} onclick={toggleWrap}>{wrap ? '[x]' : '[ ]'} wrap</button>
     <button type="button" class="btn small ghost" disabled={phase !== 'ready'} onclick={reload}>Reload</button>
-    <button type="button" class="btn small strong" disabled={phase !== 'ready' || !dirty} onclick={() => save()} title="Save (Ctrl+S)">
+    <button type="button" class="btn small strong" disabled={phase !== 'ready' || !dirty} onclick={() => save()} title="Save ({MOD}+S)">
       {phase === 'saving' ? 'Saving…' : dirty ? 'Save' : 'Saved'}
     </button>
   </footer>

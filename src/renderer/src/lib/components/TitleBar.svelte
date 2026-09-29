@@ -2,6 +2,7 @@
   import X from '@lucide/svelte/icons/x'
   import Plus from '@lucide/svelte/icons/plus'
   import { app, type MenuItem, type Tab } from '$lib/state.svelte'
+  import { MOD } from '$lib/keys'
   import Logo from './Logo.svelte'
 
   let strip = $state<HTMLElement>()
@@ -73,7 +74,7 @@
       type="button"
       class="new"
       aria-label="Open host"
-      title="Open host (Ctrl+Shift+P)"
+      title="Open host ({MOD}+Shift+P)"
       onclick={() => app.openPalette()}><Plus size={15} /></button
     >
   </nav>
@@ -84,6 +85,7 @@
     display: flex;
     align-items: stretch;
     height: var(--titlebar);
+    padding-left: var(--lights-width);
     padding-right: var(--controls-width);
     border-bottom: 1px solid var(--border-weak);
     background: var(--bg);

@@ -11,7 +11,8 @@ const FIRST_CHECK_MS = 15_000
 
 type InstallKind = 'nsis' | 'appimage' | 'deb' | 'rpm'
 
-// only installs bawkterm can replace itself; Flatpak, AUR and the tar.gz are updated by their package managers
+// only installs bawkterm can replace itself; Flatpak, AUR and the tar.gz are updated by their package managers,
+// and macOS only installs updates to apps signed with a Developer ID
 function installKind(): InstallKind | null {
   if (!app.isPackaged) return null
   if (process.platform === 'win32') return 'nsis'
@@ -34,7 +35,13 @@ export class Updater {
     private send: Send
   ) {
     const kind = installKind()
-    const managedBy = !app.isPackaged ? 'dev' : process.env.FLATPAK_ID ? 'flatpak' : 'package'
+    const managedBy = !app.isPackaged
+      ? 'dev'
+      : process.env.FLATPAK_ID
+        ? 'flatpak'
+        : process.platform === 'darwin'
+          ? 'manual'
+          : 'package'
     this.status = kind ? { supported: true, state: 'idle' } : { supported: false, managedBy, state: 'idle' }
     if (!kind) return
     autoUpdater.logger = null

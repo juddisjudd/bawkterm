@@ -39,6 +39,26 @@ function windowsCandidates(): { name: string; paths: string[] }[] {
   ]
 }
 
+function macCandidates(): { name: string; paths: string[] }[] {
+  const dirs = ['/Applications', join(homedir(), 'Applications')]
+  const bundles: [string, string][] = [
+    ['Visual Studio Code', 'Visual Studio Code.app'],
+    ['VS Code Insiders', 'Visual Studio Code - Insiders.app'],
+    ['VSCodium', 'VSCodium.app'],
+    ['Cursor', 'Cursor.app'],
+    ['Windsurf', 'Windsurf.app'],
+    ['Zed', 'Zed.app'],
+    ['Sublime Text', 'Sublime Text.app'],
+    ['BBEdit', 'BBEdit.app'],
+    ['CotEditor', 'CotEditor.app'],
+    ['Nova', 'Nova.app']
+  ]
+  return [
+    ...bundles.map(([name, bundle]) => ({ name, paths: dirs.map((dir) => join(dir, bundle)) })),
+    { name: 'TextEdit', paths: ['/System/Applications/TextEdit.app'] }
+  ]
+}
+
 // graphical editors that are usually on PATH on Linux desktops
 const LINUX_EDITORS: [string, string[]][] = [
   ['Visual Studio Code', ['code']],
@@ -57,8 +77,9 @@ const LINUX_EDITORS: [string, string[]][] = [
 ]
 
 export function detectEditors(): EditorChoice[] {
-  if (process.platform === 'win32') {
-    return windowsCandidates().flatMap(({ name, paths }) => {
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    const candidates = process.platform === 'win32' ? windowsCandidates() : macCandidates()
+    return candidates.flatMap(({ name, paths }) => {
       const found = paths.find((p) => existsSync(p))
       return found ? [{ name, command: `"${found}"` }] : []
     })
@@ -71,10 +92,15 @@ export function detectEditors(): EditorChoice[] {
 
 export async function pickEditor(win: BrowserWindow): Promise<string | null> {
   const windows = process.platform === 'win32'
+  const mac = process.platform === 'darwin'
   const res = await dialog.showOpenDialog(win, {
     title: 'Choose a text editor',
-    defaultPath: windows ? env('ProgramFiles') || undefined : '/usr/bin',
-    filters: windows ? [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }] : undefined,
+    defaultPath: windows ? env('ProgramFiles') || undefined : mac ? '/Applications' : '/usr/bin',
+    filters: windows
+      ? [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }]
+      : mac
+        ? [{ name: 'Applications', extensions: ['app'] }]
+        : undefined,
     properties: ['openFile']
   })
   const path = res.filePaths[0]

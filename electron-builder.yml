@@ -37,6 +37,16 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   artifactName: ${productName}-${version}-setup.${ext}
+mac:
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  # ad-hoc signed, not notarized: enough to run on Apple silicon, but Gatekeeper asks once and updates stay manual
+  identity: '-'
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
   icon: build/icon.png
   appId: net.bawkbawk.bawkterm

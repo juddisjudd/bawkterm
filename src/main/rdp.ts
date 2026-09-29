@@ -115,7 +115,11 @@ export async function tunnel(conn: Connection, host: string, port: number, bind 
   return server
 }
 
-const FREERDP = ['xfreerdp3', 'sdl-freerdp3', 'wlfreerdp3', 'xfreerdp', 'sdl-freerdp', 'wlfreerdp']
+// on macOS the X11 client needs XQuartz, so the SDL client comes first
+const FREERDP =
+  process.platform === 'darwin'
+    ? ['sdl-freerdp3', 'sdl-freerdp', 'xfreerdp3', 'xfreerdp']
+    : ['xfreerdp3', 'sdl-freerdp3', 'wlfreerdp3', 'xfreerdp', 'sdl-freerdp', 'wlfreerdp']
 
 // FreeRDP 3 is needed for /args-from; version 2 would need the password on its command line
 async function freeRdp3(): Promise<string> {
@@ -127,6 +131,7 @@ async function freeRdp3(): Promise<string> {
     )
     if (/version 3\./i.test(version)) return bin
   }
+  if (process.platform === 'darwin') throw new Error('Remote Desktop on macOS needs FreeRDP 3. Install it with: brew install freerdp')
   throw new Error('Remote Desktop on Linux needs FreeRDP 3 (xfreerdp3 or sdl-freerdp3). Install it from your package manager.')
 }
 

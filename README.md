@@ -1,6 +1,6 @@
 # bawkterm
 
-A desktop client for SSH, SFTP, Docker over SSH and Remote Desktop, on Windows and Linux. It keeps your hosts, passwords and keys in an encrypted vault, and can sync them between your devices, end-to-end encrypted, through [bawksync](https://github.com/juddisjudd/bawksync).
+A desktop client for SSH, SFTP, Docker over SSH and Remote Desktop, on Windows, macOS and Linux. It keeps your hosts, passwords and keys in an encrypted vault, and can sync them between your devices, end-to-end encrypted, through [bawksync](https://github.com/juddisjudd/bawksync).
 
 Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled after [opencode.ai](https://opencode.ai).
 
@@ -12,12 +12,12 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 
 - **SSH terminal**: tabs with WebGL rendering, jump hosts (chained), agent auth (OpenSSH agent or Pageant), keyboard-interactive and key auth, auto-reconnect, a per-host startup command, paste protection, scrollback search, per-tab zoom, 31 themes including the Black & Gems, Monokai and Coffee variants of [Bearded Theme](https://github.com/BeardedBear/bearded-theme) (the app's colors can match the terminal's), tabs reopened on launch.
 - **SFTP**: side-by-side local and remote panes, drag and drop (also from Explorer), recursive transfers with Replace / Keep both / Skip, type-to-filter, favorite folders and folder colors per host, "Open terminal here".
-- **Built-in editor**: "Edit in editor" opens remote files in a tab with syntax highlighting for about 100 languages, search, and Ctrl+S to save back. You can pick VS Code, another installed editor or any program instead.
+- **Built-in editor**: "Edit in editor" opens remote files in a tab with syntax highlighting for about 100 languages, search, and Ctrl+S (Cmd+S on macOS) to save back. You can pick VS Code, another installed editor or any program instead.
 - **Keychain**: generate ed25519, RSA and ECDSA keys; import OpenSSH, PEM and PuTTY keys; reusable identities (username plus password or key); import hosts from `~/.ssh/config`.
 - **Docker over SSH**: containers per host grouped by Compose project, CPU and memory, start / stop / restart, a shell or live logs in a terminal tab.
-- **Remote Desktop hosts**: opens Windows Remote Desktop (or FreeRDP 3 on Linux) already signed in, optionally through an SSH jump host.
-- **Snippets**: saved commands you run from Ctrl+Shift+S.
-- **Unlock options**: master password, plus optional Windows Hello, a passkey (phone, security key or this PC) or auto-unlock through Windows DPAPI or the Linux keyring.
+- **Remote Desktop hosts**: opens Windows Remote Desktop (or FreeRDP 3 on macOS and Linux) already signed in, optionally through an SSH jump host.
+- **Snippets**: saved commands you run from Ctrl+Shift+S (Cmd+Shift+S on macOS).
+- **Unlock options**: master password, plus optional Windows Hello, a passkey (phone, security key or this PC) or auto-unlock through Windows DPAPI, the macOS Keychain or the Linux keyring.
 - **Sync**: through a bawksync server you run yourself ([self-hosting guide](https://github.com/juddisjudd/bawksync/blob/main/docs/Home.md)). Everything is encrypted on your device first.
 
 | SFTP with favorites and folder colors | Built-in editor | Docker over SSH |
@@ -28,11 +28,31 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 
 Everything is on the [Releases](https://github.com/juddisjudd/bawkterm/releases) page. `SHA256SUMS.txt` there lists a checksum for every file.
 
-**Updates:** the Windows installer, the AppImage, the `.deb` and the `.rpm` update themselves. bawkterm checks GitHub releases on start and every 6 hours, downloads the new version in the background, and shows **update to vX.Y.Z** in the sidebar when it's ready. Turn this off, or check by hand, under **settings → updates**. The Flatpak and the AUR package are updated by `flatpak update` and your AUR helper instead.
+**Updates:** the Windows installer, the AppImage, the `.deb` and the `.rpm` update themselves. bawkterm checks GitHub releases on start and every 6 hours, downloads the new version in the background, and shows **update to vX.Y.Z** in the sidebar when it's ready. Turn this off, or check by hand, under **settings → updates**. The Flatpak and the AUR package are updated by `flatpak update` and your AUR helper instead. The macOS app does not update itself yet (see below).
 
 ### Windows
 
 Download `bawkterm-<version>-setup.exe` and run it. The installer is not code-signed yet, so Windows SmartScreen asks once: **More info → Run anyway**.
+
+### macOS
+
+Download `bawkterm-<version>-arm64.dmg` for Apple silicon (M1 and newer) or `bawkterm-<version>-x64.dmg` for Intel. Open it and drag bawkterm to Applications.
+
+The app is not signed with an Apple Developer ID yet, so macOS blocks the first launch. To allow it once:
+
+1. Open bawkterm. macOS says it cannot verify the app. Click **Done**.
+2. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to bawkterm.
+
+Or run `xattr -dr com.apple.quarantine /Applications/bawkterm.app` in Terminal.
+
+macOS notes:
+
+- **Updates are manual.** macOS only lets signed apps replace themselves, so download each new version from Releases and drag it over the old one.
+- **Auto-unlock** keeps the vault key in the macOS Keychain. After each update, macOS asks again whether bawkterm may use it: click **Always Allow**.
+- **Remote Desktop hosts** need FreeRDP 3: `brew install freerdp`.
+- **Edit in editor** finds VS Code, Cursor, Zed, Sublime Text, BBEdit and similar apps in Applications, and falls back to TextEdit.
+- Shortcuts use Cmd where Windows and Linux use Ctrl. See [Shortcuts](#shortcuts).
+- Passkey unlock is Windows-only for now.
 
 ### Linux (x64)
 
@@ -67,7 +87,7 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
 
 ### The vault
 
-- Everything you save (hosts, passwords, private keys, identities, snippets, trusted host keys) lives in one file, encrypted with **AES-256-GCM** under a random 256-bit **vault key**. The file is `%APPDATA%\bawkterm\vault.json` on Windows and `~/.config/bawkterm/vault.json` on Linux.
+- Everything you save (hosts, passwords, private keys, identities, snippets, trusted host keys) lives in one file, encrypted with **AES-256-GCM** under a random 256-bit **vault key**. The file is `%APPDATA%\bawkterm\vault.json` on Windows, `~/Library/Application Support/bawkterm/vault.json` on macOS and `~/.config/bawkterm/vault.json` on Linux.
 - Your master password never encrypts data directly. **scrypt** (N=2^17, r=8, p=1, random salt) turns it into a key that wraps the vault key. Nothing stores or logs the password.
 - Every other unlock method keeps its own wrapped copy of the vault key, bound to that method:
   - **Windows Hello**: a Hello key held by Windows (TPM-backed where the PC has a TPM) signs a fixed challenge, and the signature derives the wrapping key. Turning Hello off deletes the Hello key itself.
@@ -76,7 +96,7 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
 - **Changing the master password creates a new vault key.** Older copies and backups of the vault stop opening, and Windows Hello and passkey unlock are turned off until you set them up again.
 - Adding an unlock method, turning on auto-unlock, revealing a saved password and copying the sync link all ask for the master password again.
 - Writes are atomic (temp file, flush, rename). The previous version is kept as an encrypted `vault.json.bak`.
-- The vault locks after an idle timeout (30 minutes by default), when Windows locks or sleeps, and on Ctrl+Shift+L.
+- The vault locks after an idle timeout (30 minutes by default), when Windows locks or sleeps, and on Ctrl+Shift+L (Cmd+Shift+L on macOS).
 
 ### Inside the app
 
@@ -95,7 +115,7 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
 - **SFTP downloads**: remote file names are made safe for Windows before anything is written. A server cannot write outside the folder you chose, overwrite device names or follow symlinked folders. Reads have size limits that a server cannot bypass.
 - **Edit in editor**: temp copies are marked as downloaded from the internet and deleted when you lock, quit or next start. "Windows default app" only opens text types; anything that could run goes to Notepad.
 - **Remote Desktop**: on Windows, the password goes to the Windows credential store through a private pipe, never on a command line. It lasts only for your Windows session and is deleted after launch. On Linux, FreeRDP receives it through its standard input.
-- **Clipboard**: remote programs can copy to your clipboard (OSC 52) only if you turn that on, and only from the tab in front, and you see a notice each time. They can never read it. Links in the terminal open on Ctrl+click.
+- **Clipboard**: remote programs can copy to your clipboard (OSC 52) only if you turn that on, and only from the tab in front, and you see a notice each time. They can never read it. Links in the terminal open on Ctrl+click (Cmd+click on macOS).
 - **Updates**: downloaded over HTTPS from this repository's GitHub releases, and installed only if the file matches the SHA-512 checksum published with the release.
 
 ### Sync
@@ -129,6 +149,7 @@ bun run build        # production build into out/
 bun run dist         # installers for this platform into dist/
 bun run dist:win     # Windows installer
 bun run dist:linux   # AppImage, deb, rpm, tar.gz and Flatpak (run on Linux)
+bun run dist:mac     # Apple silicon and Intel .dmg (run on macOS)
 bun run typecheck
 ```
 
@@ -153,23 +174,23 @@ bun run release patch   # or minor, major, or an exact x.y.z
 The script refuses a dirty tree or a branch other than `main`. It bumps `package.json`, commits, tags `vX.Y.Z` and pushes. The tag runs `.github/workflows/release.yml`, which:
 
 1. Typechecks.
-2. Builds the Windows installer and every Linux package in parallel.
+2. Builds the Windows installer, every Linux package and the macOS disk images in parallel.
 3. Publishes one GitHub Release with all files, `SHA256SUMS.txt` and notes from the commits since the last tag.
 4. Updates the AUR package, if an AUR key is configured (see [packaging/aur](packaging/aur/README.md)).
 
 ## Shortcuts
 
-| Keys | Action |
-| --- | --- |
-| Ctrl+Shift+P | open host / quick connect (`user@host:port`); Shift+Enter opens SFTP |
-| Ctrl+Shift+S | run a snippet in the terminal |
-| Ctrl+Shift+F | search terminal output |
-| Ctrl+= / Ctrl+- / Ctrl+0 | zoom terminal text in, out, reset |
-| Ctrl+Tab | next tab |
-| Ctrl+Shift+W | close tab |
-| Ctrl+Shift+C / V | copy / paste in terminal (right click also copies or pastes) |
-| Ctrl+Shift+L | lock vault |
-| Ctrl+click | open a link in the terminal |
+| Windows and Linux | macOS | Action |
+| --- | --- | --- |
+| Ctrl+Shift+P | Cmd+Shift+P | open host / quick connect (`user@host:port`); Shift+Enter opens SFTP |
+| Ctrl+Shift+S | Cmd+Shift+S | run a snippet in the terminal |
+| Ctrl+Shift+F | Cmd+F | search terminal output |
+| Ctrl+= / Ctrl+- / Ctrl+0 | Cmd+= / Cmd+- / Cmd+0 | zoom terminal text in, out, reset |
+| Ctrl+Tab | Ctrl+Tab | next tab |
+| Ctrl+Shift+W | Cmd+W | close tab |
+| Ctrl+Shift+C / V | Cmd+C / V | copy / paste in terminal (right click also copies or pastes) |
+| Ctrl+Shift+L | Cmd+Shift+L | lock vault |
+| Ctrl+click | Cmd+click | open a link in the terminal |
 
 ## Project layout
 

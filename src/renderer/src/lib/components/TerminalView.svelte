@@ -15,6 +15,7 @@
   import { SEARCH_DECORATIONS, terminalIsDark, terminalTheme } from '$lib/theme'
   import { focusOnMount } from '$lib/focus'
   import { Reconnector } from '$lib/reconnect.svelte'
+  import { MOD, mod, shellSafe } from '$lib/keys'
 
   let { tab, active }: { tab: Tab; active: boolean } = $props()
 
@@ -162,23 +163,23 @@
     t.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
       const key = e.key.toLowerCase()
-      if (e.ctrlKey && e.shiftKey && key === 'c') {
+      if (shellSafe(e, 'c')) {
         copySelection()
         return false
       }
-      if (e.ctrlKey && e.shiftKey && key === 'v') {
+      if (shellSafe(e, 'v')) {
         // the browser still fires a paste event for this, handled by onPaste
         return false
       }
-      if (e.ctrlKey && e.shiftKey && key === 'f') {
+      if (shellSafe(e, 'f')) {
         searchOpen = true
         return false
       }
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && (key === '=' || key === '+' || key === '-' || key === '0')) {
+      if (mod(e) && !e.shiftKey && !e.altKey && (key === '=' || key === '+' || key === '-' || key === '0')) {
         zoom = key === '0' ? 0 : Math.max(-6, Math.min(16, zoom + (key === '-' ? -1 : 1)))
         return false
       }
-      if (ended && !e.ctrlKey && !e.altKey && (key === 'r' || key === 'enter')) {
+      if (ended && !e.ctrlKey && !e.metaKey && !e.altKey && (key === 'r' || key === 'enter')) {
         reconnectNow()
         return false
       }
@@ -309,7 +310,7 @@
   {/if}
 
   {#if zoom !== 0}
-    <button type="button" class="zoom" title="Reset zoom (Ctrl+0)" onclick={() => (zoom = 0)}>
+    <button type="button" class="zoom" title="Reset zoom ({MOD}+0)" onclick={() => (zoom = 0)}>
       {zoom > 0 ? '+' : ''}{zoom}pt
     </button>
   {/if}

@@ -16,6 +16,7 @@
   import KnownHostsView from './KnownHostsView.svelte'
   import SnippetsView from './SnippetsView.svelte'
   import SettingsView from './SettingsView.svelte'
+  import { MOD } from '$lib/keys'
 
   const vault = $derived(app.vault!)
   const nav = $derived([
@@ -83,7 +84,7 @@
           {/if}
         </button>
       {/if}
-      <button type="button" class="item" onclick={() => app.lock()} title="Lock vault (Ctrl+Shift+L)">
+      <button type="button" class="item" onclick={() => app.lock()} title="Lock vault ({MOD}+Shift+L)">
         <Lock size={15} />
         <span class="label">lock</span>
       </button>

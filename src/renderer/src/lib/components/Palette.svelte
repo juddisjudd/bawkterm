@@ -4,6 +4,7 @@
   import { focusOnMount } from '$lib/focus'
   import { terminalFor } from '$lib/sessions'
   import { tint } from '$lib/folders'
+  import { MOD, mod } from '$lib/keys'
   import Folder from '@lucide/svelte/icons/folder'
 
   type Item =
@@ -127,7 +128,7 @@
       index = Math.max(index - 1, 0)
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      run(items[index], e.shiftKey, e.ctrlKey)
+      run(items[index], e.shiftKey, mod(e))
     } else if (e.key === 'Escape') {
       app.paletteOpen = false
     }
@@ -154,7 +155,7 @@
             type="button"
             class:active={i === index}
             onmousemove={() => (index = i)}
-            onclick={(e) => run(item, e.shiftKey, e.ctrlKey)}
+            onclick={(e) => run(item, e.shiftKey, mod(e))}
           >
             {#if item.kind === 'host'}
               <span class="name">{item.host.label || item.host.address}</span>
@@ -196,7 +197,7 @@
       {:else}
         <span><span class="kbd">enter</span> ssh</span>
         <span><span class="kbd">shift+enter</span> sftp</span>
-        <span><span class="kbd">ctrl+enter</span> docker</span>
+        <span><span class="kbd">{MOD.toLowerCase()}+enter</span> docker</span>
       {/if}
       <span><span class="kbd">esc</span> close</span>
     </footer>

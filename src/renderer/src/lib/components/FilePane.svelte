@@ -12,6 +12,7 @@
   import { app, type MenuItem } from '$lib/state.svelte'
   import { bytes, date, mode, visibleName } from '$lib/format'
   import type { PathOps } from '$lib/paths'
+  import { mod } from '$lib/keys'
 
   type Side = 'local' | 'remote'
   const DRAG_TYPE = 'application/x-bawkterm-files'
@@ -282,7 +283,7 @@
       void rename(selectedEntries[0])
     } else if (e.key === 'F5') {
       void refresh()
-    } else if (e.key === 'a' && e.ctrlKey) {
+    } else if (e.key === 'a' && mod(e)) {
       e.preventDefault()
       selected = visible.map((x) => x.path)
     } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {

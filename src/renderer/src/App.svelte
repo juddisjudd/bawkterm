@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { app } from '$lib/state.svelte'
+  import { mod, shellSafe } from '$lib/keys'
   import LockScreen from '$lib/components/LockScreen.svelte'
   import Shell from '$lib/components/Shell.svelte'
   import Modals from '$lib/components/Modals.svelte'
@@ -36,16 +37,16 @@
       e.preventDefault()
       e.stopPropagation()
       app.cycleTab(e.shiftKey ? -1 : 1)
-    } else if (e.ctrlKey && e.shiftKey && (key === 'p' || key === 's')) {
+    } else if (mod(e) && e.shiftKey && (key === 'p' || key === 's')) {
       e.preventDefault()
       e.stopPropagation()
       if (app.paletteOpen) app.paletteOpen = false
       else app.openPalette(key === 's' ? 'snippets' : 'all')
-    } else if (e.ctrlKey && e.shiftKey && key === 'w') {
+    } else if (shellSafe(e, 'w')) {
       e.preventDefault()
       e.stopPropagation()
       if (app.active !== 'home') app.closeTab(app.active)
-    } else if (e.ctrlKey && e.shiftKey && key === 'l') {
+    } else if (mod(e) && e.shiftKey && key === 'l') {
       e.preventDefault()
       e.stopPropagation()
       void app.lock()

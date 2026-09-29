@@ -3,6 +3,7 @@
   import type { Snippet } from '@shared/types'
   import { app } from '$lib/state.svelte'
   import { terminalFor } from '$lib/sessions'
+  import { MOD } from '$lib/keys'
   import PageHeader from './PageHeader.svelte'
   import SnippetEditor from './SnippetEditor.svelte'
 
@@ -35,7 +36,7 @@
 </script>
 
 <div class="page">
-  <PageHeader title="snippets" subtitle="Saved commands. Run one in the open terminal with Ctrl+Shift+S.">
+  <PageHeader title="snippets" subtitle="Saved commands. Run one in the open terminal with {MOD}+Shift+S.">
     {#snippet actions()}
       <button type="button" class="btn strong" onclick={() => (editing = '')}><Plus /> New snippet</button>
     {/snippet}

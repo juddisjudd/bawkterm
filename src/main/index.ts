@@ -82,7 +82,17 @@ function lockPermissions(): void {
   ses.setDevicePermissionHandler(() => false)
 }
 
+// macOS needs a menu for Cmd+C, Cmd+V and Cmd+Q to work; the other platforms get none
+function setMenu(): void {
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null)
+    return
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }]))
+}
+
 function createWindow(vault: Vault): BrowserWindow {
+  const mac = process.platform === 'darwin'
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -91,7 +101,7 @@ function createWindow(vault: Vault): BrowserWindow {
     show: false,
     backgroundColor: '#13100f',
     title: 'bawkterm',
-    icon: iconFile(taskbarIsLight()),
+    ...(mac ? { trafficLightPosition: { x: 14, y: 12 } } : { icon: iconFile(taskbarIsLight()) }),
     titleBarStyle: 'hidden',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -104,9 +114,11 @@ function createWindow(vault: Vault): BrowserWindow {
   })
 
   win.once('ready-to-show', () => win.show())
-  const onTheme = (): void => win.setIcon(nativeImage.createFromPath(iconFile(taskbarIsLight())))
-  nativeTheme.on('updated', onTheme)
-  win.once('closed', () => nativeTheme.off('updated', onTheme))
+  if (!mac) {
+    const onTheme = (): void => win.setIcon(nativeImage.createFromPath(iconFile(taskbarIsLight())))
+    nativeTheme.on('updated', onTheme)
+    win.once('closed', () => nativeTheme.off('updated', onTheme))
+  }
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
@@ -153,8 +165,8 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(async () => {
-    app.setAppUserModelId('dev.bawkterm')
-    Menu.setApplicationMenu(null)
+    if (process.platform === 'win32') app.setAppUserModelId('dev.bawkterm')
+    setMenu()
     lockPermissions()
     sweepEditFiles()
     sweepRdpCredentials()

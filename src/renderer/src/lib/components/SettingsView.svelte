@@ -16,10 +16,13 @@
   import Lock from '@lucide/svelte/icons/lock'
   import CircleArrowDown from '@lucide/svelte/icons/circle-arrow-down'
   import Keyboard from '@lucide/svelte/icons/keyboard'
+  import { MOD, isMac, shellSafeLabel } from '$lib/keys'
 
   const s = $derived(app.settings)
   const windows = window.api.platform === 'win32'
-  const keyring = windows ? 'Windows DPAPI' : 'the system keyring'
+  const keyring = windows ? 'Windows DPAPI' : isMac ? 'the macOS Keychain' : 'the system keyring'
+  const modKey = MOD.toLowerCase()
+  const shellKey = (key: string): string => shellSafeLabel(key).toLowerCase()
 
   const tabs = [
     { id: 'appearance', label: 'appearance', icon: Palette },
@@ -116,7 +119,9 @@
       ? 'Development builds do not update themselves.'
       : update.managedBy === 'flatpak'
         ? 'This Flatpak is updated with "flatpak update".'
-        : 'This install is updated by your package manager.'
+        : update.managedBy === 'manual'
+          ? 'The macOS app cannot update itself yet. Download new versions from the GitHub releases page.'
+          : 'This install is updated by your package manager.'
   )
 
   async function checkForUpdates(): Promise<void> {
@@ -356,7 +361,7 @@
         </label>
         {#if editorChoice === 'custom'}
           <div class="row">
-            <input class="input" value={s.editorCommand} placeholder={windows ? '"C:\\Program Files\\Editor\\editor.exe"' : '/usr/bin/editor'} spellcheck="false"
+            <input class="input" value={s.editorCommand} placeholder={windows ? '"C:\\Program Files\\Editor\\editor.exe"' : isMac ? '"/Applications/Editor.app"' : '/usr/bin/editor'} spellcheck="false"
               aria-label="editor command" onchange={(e) => set('editorCommand', e.currentTarget.value.trim())} />
             <button type="button" class="btn" onclick={browseEditor}>Browse…</button>
           </div>
@@ -376,7 +381,7 @@
             onchange={(e) => { const n = num(e, 0, 1440); if (n !== null) set('autoLockMinutes', n) }} />
         </label>
         <div class="checks">
-          <Checkbox checked={s.lockOnSystemLock} label={windows ? 'lock when Windows locks or goes to sleep' : 'lock when the computer goes to sleep'} onchange={(v) => set('lockOnSystemLock', v)} />
+          <Checkbox checked={s.lockOnSystemLock} label={windows ? 'lock when Windows locks or goes to sleep' : isMac ? 'lock when the Mac locks or goes to sleep' : 'lock when the computer goes to sleep'} onchange={(v) => set('lockOnSystemLock', v)} />
         </div>
 
         <h3>unlocking</h3>
@@ -456,15 +461,15 @@
 
       {:else if current.id === 'shortcuts'}
         <dl>
-          <dt><span class="kbd">ctrl+shift+p</span></dt><dd>open host / quick connect</dd>
-          <dt><span class="kbd">ctrl+shift+s</span></dt><dd>run a snippet in the terminal</dd>
-          <dt><span class="kbd">ctrl+shift+f</span></dt><dd>search terminal output</dd>
-          <dt><span class="kbd">ctrl+= / - / 0</span></dt><dd>zoom terminal text in, out, reset</dd>
+          <dt><span class="kbd">{modKey}+shift+p</span></dt><dd>open host / quick connect</dd>
+          <dt><span class="kbd">{modKey}+shift+s</span></dt><dd>run a snippet in the terminal</dd>
+          <dt><span class="kbd">{shellKey('f')}</span></dt><dd>search terminal output</dd>
+          <dt><span class="kbd">{modKey}+= / - / 0</span></dt><dd>zoom terminal text in, out, reset</dd>
           <dt><span class="kbd">ctrl+tab</span></dt><dd>next tab</dd>
-          <dt><span class="kbd">ctrl+shift+w</span></dt><dd>close tab</dd>
-          <dt><span class="kbd">ctrl+shift+c / v</span></dt><dd>copy / paste in terminal</dd>
-          <dt><span class="kbd">ctrl+shift+l</span></dt><dd>lock vault</dd>
-          <dt><span class="kbd">ctrl+click</span></dt><dd>open a link in the terminal</dd>
+          <dt><span class="kbd">{shellKey('w')}</span></dt><dd>close tab</dd>
+          <dt><span class="kbd">{shellKey('c')} / v</span></dt><dd>copy / paste in terminal</dd>
+          <dt><span class="kbd">{modKey}+shift+l</span></dt><dd>lock vault</dd>
+          <dt><span class="kbd">{modKey}+click</span></dt><dd>open a link in the terminal</dd>
         </dl>
       {/if}
     </div>

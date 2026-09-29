@@ -99,9 +99,9 @@ export interface SyncState {
 export type UpdateState = 'idle' | 'checking' | 'downloading' | 'ready' | 'none' | 'error'
 
 export interface UpdateStatus {
-  // false in dev builds and where a package manager owns updates (Flatpak, AUR, tar.gz)
+  // false in dev builds, where a package manager owns updates (Flatpak, AUR, tar.gz) and on unsigned macOS builds
   supported: boolean
-  managedBy?: 'dev' | 'flatpak' | 'package'
+  managedBy?: 'dev' | 'flatpak' | 'package' | 'manual'
   state: UpdateState
   version?: string
   percent?: number

@@ -3,6 +3,7 @@
   import type { Snippet } from '@shared/types'
   import { app } from '$lib/state.svelte'
   import { focusOnMount } from '$lib/focus'
+  import { MOD, mod } from '$lib/keys'
   import Drawer from './Drawer.svelte'
 
   let { snippetId, onclose }: { snippetId: string; onclose: () => void } = $props()
@@ -46,9 +47,9 @@
       bind:value={snippet.command}
       placeholder="sudo systemctl restart nginx"
       spellcheck="false"
-      onkeydown={(e) => e.key === 'Enter' && e.ctrlKey && save()}
+      onkeydown={(e) => e.key === 'Enter' && mod(e) && save()}
     ></textarea>
-    <span class="hint">Multiple lines run in order. Ctrl+Enter saves.</span>
+    <span class="hint">Multiple lines run in order. {MOD}+Enter saves.</span>
   </label>
 
   {#snippet footer()}

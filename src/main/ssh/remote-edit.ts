@@ -31,7 +31,7 @@ interface Edit {
 
 const EDIT_ROOT = join(tmpdir(), 'bawkterm-edit')
 
-// types whose default Windows action opens them as text; anything else could run, so it goes to Notepad
+// types whose default action opens them as text; anything else could run, so it goes to Notepad or TextEdit
 const SAFE_DEFAULT = new Set(
   'txt log md markdown conf cfg cnf ini toml yaml yml json jsonc csv tsv env properties sql css scss less'.split(' ')
 )
@@ -39,6 +39,7 @@ const SAFE_DEFAULT = new Set(
 function launch(program: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = /\.(cmd|bat)$/i.test(program)
+    const bundle = process.platform === 'darwin' && /\.app\/?$/i.test(program)
     const child = script
       ? spawn(system32('cmd.exe'), ['/d', '/s', '/c', `"${[program, ...args].map((a) => `"${a}"`).join(' ')}"`], {
           windowsVerbatimArguments: true,
@@ -46,7 +47,9 @@ function launch(program: string, args: string[]): Promise<void> {
           stdio: 'ignore',
           windowsHide: true
         })
-      : spawn(program, args, { detached: true, stdio: 'ignore' })
+      : bundle
+        ? spawn('/usr/bin/open', ['-a', program, ...args], { detached: true, stdio: 'ignore' })
+        : spawn(program, args, { detached: true, stdio: 'ignore' })
     child.once('error', reject)
     child.once('spawn', () => {
       child.unref()
@@ -55,9 +58,10 @@ function launch(program: string, args: string[]): Promise<void> {
   })
 }
 
-// Notepad on Windows; on Linux the first graphical editor found on PATH
+// Notepad on Windows, TextEdit on macOS; on Linux the first graphical editor found on PATH
 function plainEditor(): string {
   if (process.platform === 'win32') return system32('notepad.exe')
+  if (process.platform === 'darwin') return '/System/Applications/TextEdit.app'
   const [name] = splitCommand(detectEditors()[0]?.command ?? '')
   if (!name) throw new Error('No text editor found. Choose one in settings → editor for "Edit in editor".')
   return name

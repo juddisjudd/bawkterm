@@ -25,12 +25,17 @@ function runnable(path: string): boolean {
   }
 }
 
+// apps started from Finder get a PATH without Homebrew
+const MAC_EXTRA_PATH = ['/opt/homebrew/bin', '/usr/local/bin']
+
 // PATH lookup that skips the current directory, which Windows would otherwise search first
 export function findProgram(name: string): string | null {
   if (isAbsolute(name)) return runnable(name) ? name : null
   if (/[\\/]/.test(name)) return null
   const exts = windows && !/\.\w+$/.test(name) ? ['.exe', '.cmd', '.bat', '.com'] : ['']
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+  const dirs = (process.env.PATH ?? '').split(delimiter)
+  if (process.platform === 'darwin') dirs.push(...MAC_EXTRA_PATH)
+  for (const dir of dirs) {
     if (!dir || !isAbsolute(dir)) continue
     for (const ext of exts) {
       const candidate = join(dir, name + ext)
