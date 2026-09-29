@@ -177,4 +177,4 @@ Change these to your own values: `APP_HOST` in `src/main/index.ts`, the default 
 
 ## License
 
-No license has been chosen yet. Until a `LICENSE` file is added, all rights are reserved.
+[GNU Affero General Public License v3.0](LICENSE). You may use, change and share bawkterm, and anyone who distributes a changed version must publish its source under the same license.

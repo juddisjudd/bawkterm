@@ -26,4 +26,3 @@ packaging/aur/render.sh 0.3.2 <sha256 of bawkterm-0.3.2.tar.gz> /tmp/bawkterm-bi
 cd /tmp/bawkterm-bin && makepkg -si
 ```
 
-Before the first publish, update `license=` in `PKGBUILD.in` and `render.sh` to the project's SPDX license identifier once one is chosen.

@@ -62,6 +62,7 @@ deb:
 rpm:
   fpm: ['--rpm-rpmbuild-define=_build_id_links none']
 flatpak:
+  license: LICENSE
   runtimeVersion: '25.08'
   baseVersion: '25.08'
   finishArgs:

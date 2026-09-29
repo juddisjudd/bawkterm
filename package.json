@@ -4,7 +4,7 @@
   "description": "SSH, SFTP, Docker and Remote Desktop client with an encrypted vault",
   "main": "./out/main/index.js",
   "author": "CKH",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "https://github.com/juddisjudd/bawkterm.git"
