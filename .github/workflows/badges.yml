@@ -1,0 +1,48 @@
+name: badges
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: badges
+  cancel-in-progress: true
+
+jobs:
+  downloads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Count installer downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # latest.yml and .blockmap files are fetched by the auto-updater on every check, so they are not counted.
+          count=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[].assets[] | select(.name | test("[.](exe|dmg|zip|AppImage|deb|rpm|flatpak|tar[.]gz)$")) | .download_count' \
+            | awk '{ s += $1 } END { print s + 0 }')
+          message=$(awk -v n="$count" 'BEGIN {
+            if (n >= 1e6) s = sprintf("%.1fM", n / 1e6)
+            else if (n >= 1e4) s = sprintf("%dk", n / 1e3)
+            else if (n >= 1e3) s = sprintf("%.1fk", n / 1e3)
+            else s = n
+            sub(/\.0/, "", s); print s
+          }')
+          mkdir -p out
+          printf '{"schemaVersion":1,"label":"downloads","message":"%s","color":"blue"}\n' "$message" > out/downloads.json
+          cat out/downloads.json
+
+      - name: Publish to the badges branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: out
+        run: |
+          git init -q -b badges
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add downloads.json
+          git commit -q -m 'update download count'
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges

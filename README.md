@@ -1,5 +1,11 @@
 # bawkterm
 
+[![Latest release](https://img.shields.io/github/v/release/juddisjudd/bawkterm?style=flat-square&label=release)](https://github.com/juddisjudd/bawkterm/releases/latest)
+[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjuddisjudd%2Fbawkterm%2Fbadges%2Fdownloads.json&style=flat-square)](https://github.com/juddisjudd/bawkterm/releases)
+[![AUR](https://img.shields.io/aur/version/bawkterm-bin?style=flat-square&label=AUR)](https://aur.archlinux.org/packages/bawkterm-bin)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)
+[![License](https://img.shields.io/github/license/juddisjudd/bawkterm?style=flat-square)](LICENSE)
+
 A desktop client for SSH, SFTP, Docker over SSH and Remote Desktop, on Windows, macOS and Linux. It keeps your hosts, passwords and keys in an encrypted vault, and can sync them between your devices, end-to-end encrypted, through [bawksync](https://github.com/juddisjudd/bawksync).
 
 Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled after [opencode.ai](https://opencode.ai).
