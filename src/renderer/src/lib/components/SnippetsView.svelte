@@ -1,7 +1,7 @@
 <script lang="ts">
   import Plus from '@lucide/svelte/icons/plus'
   import type { Snippet } from '@shared/types'
-  import { app } from '$lib/state.svelte'
+  import { app, tabName } from '$lib/state.svelte'
   import { terminalFor } from '$lib/sessions'
   import { MOD } from '$lib/keys'
   import PageHeader from './PageHeader.svelte'
@@ -25,7 +25,7 @@
 
   function menu(e: MouseEvent, s: Snippet): void {
     app.openMenu(e, [
-      ...terminals.map((t) => ({ label: `Run in ${t.title}`, action: () => runIn(t.id, s) })),
+      ...terminals.map((t) => ({ label: `Run in ${tabName(t)}`, action: () => runIn(t.id, s) })),
       ...(terminals.length ? ['sep' as const] : []),
       { label: 'Edit', action: () => (editing = s.id) },
       { label: 'Copy command', action: () => navigator.clipboard.writeText(s.command) },

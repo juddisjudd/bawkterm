@@ -10,7 +10,7 @@
   import ChevronUp from '@lucide/svelte/icons/chevron-up'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import X from '@lucide/svelte/icons/x'
-  import { app, type Tab } from '$lib/state.svelte'
+  import { app, tabName, type Tab } from '$lib/state.svelte'
   import { onSessionData, registerTerminal } from '$lib/sessions'
   import { SEARCH_DECORATIONS, terminalIsDark, terminalTheme } from '$lib/theme'
   import { focusOnMount } from '$lib/focus'
@@ -111,7 +111,7 @@
     if (active && document.hasFocus()) return
     app.ringBell(tab.id)
     if (!app.settings.bellNotify || document.hasFocus()) return
-    const note = new Notification('bawkterm', { body: `${tab.title} rang the bell` })
+    const note = new Notification('bawkterm', { body: `${tabName(tab)} rang the bell` })
     note.onclick = () => {
       window.api.win.focus()
       app.active = tab.id
@@ -146,7 +146,7 @@
       const writeText = (_sel: unknown, text: string): void => {
         if (!active || !document.hasFocus()) return
         window.api.app.copy(text)
-        app.toast(`${tab.title} copied text to your clipboard`)
+        app.toast(`${tabName(tab)} copied text to your clipboard`)
       }
       t.loadAddon(new ClipboardAddon(undefined, { readText: () => '', writeText }))
     }

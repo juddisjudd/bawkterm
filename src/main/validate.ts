@@ -220,7 +220,9 @@ export function cleanLocalState(v: unknown): LocalState {
         kind: oneOf(tab.kind, 'tab kind', TAB_KINDS),
         target: cleanTarget(tab.target),
         title: text(tab.title ?? '', 'tab title', 512),
-        ...(tab.command !== undefined ? { command: text(tab.command, 'tab command') } : {})
+        ...(tab.command !== undefined ? { command: text(tab.command, 'tab command') } : {}),
+        ...(tab.label !== undefined ? { label: line(tab.label, 'tab name', 128) } : {}),
+        ...(tab.color !== undefined ? { color: oneOf(tab.color, 'tab color', FOLDER_COLORS) } : {})
       }
     }),
     active: int(s.active ?? -1, 'active tab', -1, 100),

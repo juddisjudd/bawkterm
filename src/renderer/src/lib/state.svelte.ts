@@ -37,7 +37,11 @@ export interface Tab {
   bell?: boolean
   edit?: { sessionId: string; path: string }
   dirty?: boolean
+  label?: string
+  color?: FolderColor
 }
+
+export const tabName = (tab: Tab): string => tab.label || tab.title
 
 export interface Modal {
   id: string
@@ -143,7 +147,14 @@ class AppState {
     if (!this.vault?.settings.restoreTabs) return
     this.updateLocal((l) => {
       const kept = this.tabs.filter((t) => t.kind !== 'edit')
-      l.tabs = kept.map((t) => ({ kind: t.kind as SavedTab['kind'], target: $state.snapshot(t.target), title: t.title, command: t.command }))
+      l.tabs = kept.map((t) => ({
+        kind: t.kind as SavedTab['kind'],
+        target: $state.snapshot(t.target),
+        title: t.title,
+        command: t.command,
+        ...(t.label ? { label: t.label } : {}),
+        ...(t.color ? { color: t.color } : {})
+      }))
       l.active = kept.findIndex((t) => t.id === this.#active)
     })
   }
@@ -152,7 +163,16 @@ class AppState {
     const saved = data.local.tabs.filter((t) => !('hostId' in t.target) || data.hosts.some((h) => 'hostId' in t.target && h.id === t.target.hostId))
     if (!saved.length || this.tabs.length) return
     for (const t of saved) {
-      this.tabs.push({ id: crypto.randomUUID(), kind: t.kind, target: t.target, title: t.title, command: t.command, status: 'connecting' })
+      this.tabs.push({
+        id: crypto.randomUUID(),
+        kind: t.kind,
+        target: t.target,
+        title: t.title,
+        command: t.command,
+        label: t.label,
+        color: t.color,
+        status: 'connecting'
+      })
     }
     const i = data.local.active
     this.#active = i >= 0 && i < this.tabs.length ? this.tabs[i].id : 'home'
@@ -247,10 +267,32 @@ class AppState {
     await api.vault.lock()
   }
 
-  openTab(kind: TabKind, target: ConnectTarget, title: string, command?: string): void {
-    const tab: Tab = { id: crypto.randomUUID(), kind, target, title, status: 'connecting', command }
+  openTab(kind: TabKind, target: ConnectTarget, title: string, command?: string, look: Pick<Tab, 'label' | 'color'> = {}): void {
+    const tab: Tab = { id: crypto.randomUUID(), kind, target, title, status: 'connecting', command, ...look }
     this.tabs.push(tab)
     this.active = tab.id
+  }
+
+  async renameTab(id: string): Promise<void> {
+    const tab = this.tabs.find((t) => t.id === id)
+    if (!tab) return
+    const res = await this.ask({
+      title: 'Rename tab',
+      message: `Leave it empty to go back to "${tab.title}".`,
+      fields: [{ name: 'label', label: 'name', value: tabName(tab) }],
+      confirmLabel: 'Rename'
+    })
+    if (!res) return
+    const label = res.values.label.trim().slice(0, 64)
+    tab.label = label && label !== tab.title ? label : undefined
+    this.persistTabs()
+  }
+
+  colorTab(id: string, color: FolderColor | null): void {
+    const tab = this.tabs.find((t) => t.id === id)
+    if (!tab) return
+    tab.color = color ?? undefined
+    this.persistTabs()
   }
 
   openEditor(from: Tab, path: string): void {

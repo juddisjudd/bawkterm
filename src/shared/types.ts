@@ -160,6 +160,8 @@ export interface SavedTab {
   target: ConnectTarget
   title: string
   command?: string
+  label?: string
+  color?: FolderColor
 }
 
 // per device, never synced

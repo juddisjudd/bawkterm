@@ -31,7 +31,7 @@
       {#if item === 'sep'}
         <div class="sep"></div>
       {:else if 'swatches' in item}
-        <div class="swatches" role="group" aria-label="folder color">
+        <div class="swatches" role="group" aria-label="color">
           <span class="swatch-label">color</span>
           {#each item.swatches as color (color)}
             <button
