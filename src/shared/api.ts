@@ -133,7 +133,7 @@ export interface BawkApi {
     onEdit(cb: (info: EditInfo) => void): Unsubscribe
   }
   rdp: {
-    launch(hostId: string): Promise<void>
+    launch(target: ConnectTarget): Promise<void>
   }
   docker: {
     open(sessionId: string, target: ConnectTarget): Promise<{ title: string; version: string }>

@@ -108,7 +108,7 @@ const api: BawkApi = {
     onEdit: (cb) => on('sftp:edit', cb)
   },
   rdp: {
-    launch: (hostId) => invoke('rdp:launch', hostId)
+    launch: (target) => invoke('rdp:launch', target)
   },
   docker: {
     open: (sessionId, target) => invoke('docker:open', sessionId, target),

@@ -360,7 +360,7 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   handle('sftp:edit', (sid, p) => sftp.editor.open(id(sid), path(p)))
   handle('sftp:editStop', (sid, p) => sftp.editor.stop(id(sid), path(p)))
 
-  handle('rdp:launch', (hostId) => rdp.launch(id(hostId)))
+  handle('rdp:launch', (target) => rdp.launch(cleanTarget(target)))
 
   handle('docker:open', (sid, target) => docker.open(id(sid), cleanTarget(target)))
   handle('docker:list', (sid) => docker.list(id(sid)))

@@ -11,7 +11,8 @@
   const vault = $derived(app.vault!)
   let query = $state('')
   let quick = $state('')
-  let quickMode = $state<'ssh' | 'sftp'>('ssh')
+  const QUICK_MODES = ['ssh', 'sftp', 'docker', 'rdp'] as const
+  let quickMode = $state<(typeof QUICK_MODES)[number]>('ssh')
 
   const groups = $derived.by(() => {
     const q = query.trim().toLowerCase()
@@ -43,20 +44,22 @@
     return `${user ? `${user}@` : ''}${h.address}${h.port !== defaultPort ? `:${h.port}` : ''}`
   }
 
-  function parseQuick(text: string): AdhocTarget | null {
+  function parseQuick(text: string, defaultPort: number): AdhocTarget | null {
     const m = text.trim().match(/^(?:ssh\s+)?(?:([^@\s]+)@)?([^\s:@]+)(?::(\d+))?(?:\s+-p\s*(\d+))?$/)
     if (!m) return null
-    return { username: m[1] ?? '', address: m[2], port: Number(m[4] ?? m[3] ?? 22) }
+    return { username: m[1] ?? '', address: m[2], port: Number(m[4] ?? m[3] ?? defaultPort) }
   }
 
   function connectQuick(e: SubmitEvent): void {
     e.preventDefault()
-    const target = parseQuick(quick)
+    const target = parseQuick(quick, quickMode === 'rdp' ? 3389 : 22)
     if (!target) {
       app.toast('Use the form user@host or user@host:port', 'error')
       return
     }
-    app.openTab(quickMode, { adhoc: target }, target.username ? `${target.username}@${target.address}` : target.address)
+    const title = target.username ? `${target.username}@${target.address}` : target.address
+    if (quickMode === 'rdp') void app.launchRdp({ adhoc: target }, title)
+    else app.openTab(quickMode, { adhoc: target }, title)
     quick = ''
   }
 
@@ -82,7 +85,7 @@
   function menu(e: MouseEvent, h: Host): void {
     const open: MenuItem[] =
       h.kind === 'rdp'
-        ? [{ label: 'Open Remote Desktop', action: () => app.launchRdp(h.id) }]
+        ? [{ label: 'Open Remote Desktop', action: () => app.launchRdp({ hostId: h.id }, h.label || h.address) }]
         : [
             { label: 'Open SSH', action: () => app.openHost('ssh', h.id) },
             { label: 'Open SFTP', action: () => app.openHost('sftp', h.id) },
@@ -110,7 +113,7 @@
 
   <form class="quick" onsubmit={connectQuick}>
     <div class="modes" role="tablist">
-      {#each ['ssh', 'sftp'] as const as mode (mode)}
+      {#each QUICK_MODES as mode (mode)}
         <button
           type="button"
           role="tab"
@@ -163,7 +166,9 @@
             <span class="used" title="last connected">{ago(h.lastUsedAt)}</span>
             <span class="actions">
               {#if h.kind === 'rdp'}
-                <button type="button" class="btn small" onclick={() => app.launchRdp(h.id)}>remote desktop</button>
+                <button type="button" class="btn small" onclick={() => app.launchRdp({ hostId: h.id }, h.label || h.address)}
+                  >remote desktop</button
+                >
               {:else}
                 <button type="button" class="btn small" onclick={() => app.openHost('ssh', h.id)}>ssh</button>
                 <button type="button" class="btn small" onclick={() => app.openHost('sftp', h.id)}>sftp</button>

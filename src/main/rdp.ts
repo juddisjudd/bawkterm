@@ -5,6 +5,7 @@ import { existsSync, readFileSync, rmSync, promises as fsp } from 'node:fs'
 import { createServer, type AddressInfo, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { ConnectTarget } from '@shared/types'
 import type { Prompter } from './prompts'
 import type { Vault } from './vault'
 import { closeConnection, connect, type Connection } from './ssh/connect'
@@ -152,6 +153,38 @@ function startFreeRdp(bin: string, address: string, username: string, password: 
   return child
 }
 
+interface RdpTarget {
+  hostId?: string
+  label: string
+  address: string
+  port: number
+  username: string
+  password: string
+  fullscreen: boolean
+  jumpHostId: string
+}
+
+function resolveTarget(target: ConnectTarget, vault: Vault): RdpTarget {
+  if ('adhoc' in target) {
+    const { address, port, username } = target.adhoc
+    return { label: address, address, port, username, password: '', fullscreen: false, jumpHostId: '' }
+  }
+  const data = vault.get()
+  const host = data.hosts.find((h) => h.id === target.hostId)
+  if (!host || host.kind !== 'rdp') throw new Error('RDP host not found')
+  const identity = host.identityId ? data.identities.find((i) => i.id === host.identityId) : undefined
+  return {
+    hostId: host.id,
+    label: host.label || host.address,
+    address: host.address,
+    port: host.port || 3389,
+    username: host.username || identity?.username || '',
+    password: host.password || identity?.password || '',
+    fullscreen: host.rdpFullscreen,
+    jumpHostId: host.jumpHostId
+  }
+}
+
 const pendingFile = (): string => join(app.getPath('userData'), 'rdp-credentials.json')
 
 // credentials from a run that crashed before its cleanup timer fired
@@ -186,18 +219,40 @@ export class RdpLauncher {
     rmSync(pendingFile(), { force: true })
   }
 
-  async launch(hostId: string): Promise<void> {
+  private async touch(hostId: string | undefined): Promise<void> {
+    if (!hostId) return
+    await this.vault.mutate((d) => {
+      const stored = d.hosts.find((h) => h.id === hostId)
+      if (stored) stored.lastUsedAt = Date.now()
+    })
+  }
+
+  async launch(connectTarget: ConnectTarget): Promise<void> {
     const windows = process.platform === 'win32'
     const freeRdp = windows ? '' : await freeRdp3()
-    const data = this.vault.get()
-    const host = data.hosts.find((h) => h.id === hostId)
-    if (!host || host.kind !== 'rdp') throw new Error('RDP host not found')
-    const identity = host.identityId ? data.identities.find((i) => i.id === host.identityId) : undefined
-    const username = host.username || identity?.username || ''
-    const password = host.password || identity?.password || ''
+    const host = resolveTarget(connectTarget, this.vault)
+    const ask = this.prompter.forSession(`rdp:${randomUUID()}`)
+
+    // mstsc asks for missing credentials itself, FreeRDP would ask on a terminal nobody sees
+    if (!windows && !host.password) {
+      const answer = await ask({
+        kind: 'credentials',
+        title: 'Remote Desktop',
+        message: `Sign in to ${host.address}`,
+        fields: [
+          { name: 'username', label: 'Username', value: host.username },
+          { name: 'password', label: 'Password', secret: true }
+        ],
+        confirmLabel: 'Connect'
+      })
+      if (!answer) return
+      host.username = answer.values.username.trim()
+      host.password = answer.values.password
+    }
+    const { username, password } = host
 
     let target = host.address
-    let port = host.port || 3389
+    let port = host.port
     let conn: Connection | undefined
     let server: Server | undefined
     let credential: string | undefined
@@ -208,10 +263,9 @@ export class RdpLauncher {
     }
     try {
       if (host.jumpHostId) {
-        const sessionId = `rdp:${randomUUID()}`
         conn = await connect({ hostId: host.jumpHostId }, {
           vault: this.vault,
-          ask: this.prompter.forSession(sessionId),
+          ask,
           signal: new AbortController().signal
         })
         target = loopbackAddress()
@@ -221,13 +275,10 @@ export class RdpLauncher {
       const address = port === 3389 ? target : `${target}:${port}`
 
       if (!windows) {
-        const child = startFreeRdp(freeRdp, address, username, password, host.rdpFullscreen, host.label || host.address)
+        const child = startFreeRdp(freeRdp, address, username, password, host.fullscreen, host.label)
         child.once('error', cleanup)
         child.once('exit', cleanup)
-        await this.vault.mutate((d) => {
-          const stored = d.hosts.find((h) => h.id === hostId)
-          if (stored) stored.lastUsedAt = Date.now()
-        })
+        await this.touch(host.hostId)
         return
       }
 
@@ -240,7 +291,7 @@ export class RdpLauncher {
       const dir = join(tmpdir(), 'bawkterm-rdp')
       await fsp.mkdir(dir, { recursive: true })
       file = join(dir, `${randomUUID()}.rdp`)
-      await fsp.writeFile(file, rdpFile(address, username, host.rdpFullscreen), 'utf8')
+      await fsp.writeFile(file, rdpFile(address, username, host.fullscreen), 'utf8')
 
       const child = spawn(system32('mstsc.exe'), [file], { stdio: 'ignore', windowsHide: false })
       child.once('error', cleanup)
@@ -264,9 +315,6 @@ export class RdpLauncher {
       }
     }, CLEANUP_MS)
 
-    await this.vault.mutate((d) => {
-      const stored = d.hosts.find((h) => h.id === hostId)
-      if (stored) stored.lastUsedAt = Date.now()
-    })
+    await this.touch(host.hostId)
   }
 }

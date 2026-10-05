@@ -276,14 +276,13 @@ class AppState {
   openHost(kind: TabKind, hostId: string): void {
     const host = this.vault?.hosts.find((h) => h.id === hostId)
     if (!host) return
-    if (host.kind === 'rdp') void this.launchRdp(hostId)
+    if (host.kind === 'rdp') void this.launchRdp({ hostId }, host.label || host.address)
     else this.openTab(kind, { hostId }, host.label || host.address)
   }
 
-  async launchRdp(hostId: string): Promise<void> {
-    const host = this.vault?.hosts.find((h) => h.id === hostId)
-    this.toast(`Opening Remote Desktop for ${host?.label || host?.address}`)
-    await api.rdp.launch(hostId).catch((err) => this.fail(err))
+  async launchRdp(target: ConnectTarget, title: string): Promise<void> {
+    this.toast(`Opening Remote Desktop for ${title}`)
+    await api.rdp.launch(target).catch((err) => this.fail(err))
   }
 
   closeTab(id: string, discard = false): void {
