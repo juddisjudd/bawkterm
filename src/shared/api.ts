@@ -21,6 +21,7 @@ import type {
   Snippet,
   SshKey,
   SyncStatus,
+  TerminalLook,
   TransferInfo,
   VaultData,
   VaultStatus,
@@ -176,6 +177,7 @@ export interface BawkApi {
     copy(text: string): void
     pathForFile(file: File): string
     editors(): Promise<EditorChoice[]>
+    terminalLooks(): Promise<TerminalLook[]>
     pickEditor(): Promise<string | null>
   }
 }

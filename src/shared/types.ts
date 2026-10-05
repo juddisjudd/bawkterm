@@ -119,6 +119,36 @@ export interface SyncStatus {
 export type ThemeSetting = 'system' | 'dark' | 'light' | 'terminal'
 export type CursorStyle = 'block' | 'bar' | 'underline'
 
+export interface CustomTheme {
+  id: string
+  label: string
+  dark: boolean
+  accent: string
+  colors: Record<string, string>
+}
+
+export interface TerminalPalette {
+  background: string
+  foreground: string
+  cursor?: string
+  selection?: string
+  selectionText?: string
+  // black, red, green, yellow, blue, magenta, cyan, white, then the bright set
+  ansi: string[]
+}
+
+export interface TerminalLook {
+  terminal: string
+  name: string
+  palette?: TerminalPalette
+  // a scheme the terminal names but defines elsewhere, matched against the built-in themes
+  scheme?: string
+  fonts?: string[]
+  fontSize?: number
+  cursorStyle?: CursorStyle
+  cursorBlink?: boolean
+}
+
 export interface Settings {
   theme: ThemeSetting
   terminalFontSize: number
@@ -141,6 +171,7 @@ export interface Settings {
   restoreTabs: boolean
   lockOnSystemLock: boolean
   autoUpdate: boolean
+  customThemes: CustomTheme[]
 }
 
 export interface VaultData {

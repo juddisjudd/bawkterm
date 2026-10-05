@@ -21,7 +21,8 @@ export const DEFAULT_SETTINGS: Settings = {
   terminalTheme: 'auto',
   restoreTabs: true,
   lockOnSystemLock: true,
-  autoUpdate: true
+  autoUpdate: true,
+  customThemes: []
 }
 
 export function emptyVault(): VaultData {

@@ -151,6 +151,7 @@ const api: BawkApi = {
     copy: (text) => ipcRenderer.send('app:copy', text),
     pathForFile: (file) => webUtils.getPathForFile(file),
     editors: () => invoke('app:editors'),
+    terminalLooks: () => invoke('app:terminalLooks'),
     pickEditor: () => invoke('app:pickEditor')
   }
 }

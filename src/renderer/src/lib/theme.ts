@@ -1,4 +1,5 @@
 import type { ITheme } from '@xterm/xterm'
+import type { CustomTheme, TerminalPalette } from '@shared/types'
 
 export interface TerminalTheme {
   id: string
@@ -864,8 +865,50 @@ export const TERMINAL_THEMES: TerminalTheme[] = [
 ]
 
 
+let imported: TerminalTheme[] = []
+
+export function setImportedThemes(themes: CustomTheme[]): void {
+  imported = themes.map((t) => ({ ...t, colors: t.colors as ITheme }))
+}
+
 export function findTerminalTheme(id: string): TerminalTheme | undefined {
-  return TERMINAL_THEMES.find((t) => t.id === id)
+  return TERMINAL_THEMES.find((t) => t.id === id) ?? imported.find((t) => t.id === id)
+}
+
+const slug = (s: string): string =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+
+export function builtinThemeNamed(name: string): TerminalTheme | undefined {
+  return TERMINAL_THEMES.find((t) => !t.builtin && slug(t.label) === slug(name))
+}
+
+export function themeFromPalette(terminal: string, name: string, p: TerminalPalette): CustomTheme {
+  const names = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
+  const keys = [...names, ...names.map((n) => `bright${n[0].toUpperCase()}${n.slice(1)}`)]
+  const dark = toLch(p.background)[0] < 0.6
+  const cursor = p.cursor ?? p.foreground
+  // a selection color without its own text color is drawn see-through by most terminals
+  const selection = p.selection && p.selectionText ? p.selection : fit(mix(p.background, p.selection ?? p.foreground, p.selection ? 0.35 : 0.25))
+  return {
+    id: `imported-${slug(terminal)}-${slug(name)}`.slice(0, 64),
+    label: name,
+    dark,
+    accent: toLch(cursor)[1] > 0.08 ? cursor : p.ansi[dark ? 12 : 4],
+    colors: {
+      background: p.background,
+      foreground: p.foreground,
+      cursor,
+      cursorAccent: p.background,
+      selectionBackground: selection,
+      ...(p.selection && p.selectionText ? { selectionForeground: p.selectionText } : {}),
+      ...Object.fromEntries(keys.map((k, i) => [k, p.ansi[i]]))
+    }
+  }
 }
 
 export function terminalIsDark(id: string, appTheme: 'dark' | 'light'): boolean {

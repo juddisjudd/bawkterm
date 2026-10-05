@@ -16,6 +16,7 @@ import { UnlockMethods } from './unlock'
 import { Terminals } from './ssh/terminal'
 import type { Vault } from './vault'
 import { detectEditors, pickEditor } from './editors'
+import { detectTerminalLooks } from './terminal-looks'
 import { Updater } from './updater'
 import {
   bool,
@@ -410,6 +411,7 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   handle('update:check', () => updater.check(true))
   handle('update:install', () => updater.install())
   handle('app:editors', () => detectEditors())
+  handle('app:terminalLooks', () => detectTerminalLooks())
   handle('app:pickEditor', () => pickEditor(win))
   listen('app:openExternal', (url) => {
     const target = line(url, 'link', 8192)

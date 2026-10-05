@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import type { CursorStyle, EditorChoice, Settings, ThemeSetting } from '@shared/types'
+  import type { CursorStyle, EditorChoice, Settings, TerminalLook, ThemeSetting } from '@shared/types'
   import { DEFAULT_APP_EDITOR } from '@shared/defaults'
   import { app, type SettingsTab } from '$lib/state.svelte'
   import PageHeader from './PageHeader.svelte'
   import Checkbox from './Checkbox.svelte'
   import SyncSettings from './SyncSettings.svelte'
-  import { TERMINAL_THEMES, terminalTheme } from '$lib/theme'
+  import { TERMINAL_THEMES, builtinThemeNamed, terminalTheme, themeFromPalette } from '$lib/theme'
   import { enrollPasskey } from '$lib/passkey'
   import Palette from '@lucide/svelte/icons/palette'
   import SquareTerminal from '@lucide/svelte/icons/square-terminal'
@@ -70,6 +70,68 @@
   function num(e: Event, min: number, max: number): number | null {
     const n = Number((e.currentTarget as HTMLInputElement).value)
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null
+  }
+
+  const themeList = $derived([...TERMINAL_THEMES, ...s.customThemes])
+  const importedActive = $derived(s.customThemes.find((t) => t.id === s.terminalTheme))
+  let looks = $state<TerminalLook[] | null>(null)
+  let finding = $state(false)
+
+  async function findLooks(): Promise<void> {
+    finding = true
+    looks = await window.api.app.terminalLooks().catch((err) => {
+      app.fail(err)
+      return null
+    })
+    finding = false
+  }
+
+  function lookSummary(look: TerminalLook): string {
+    const known = !look.palette && look.scheme ? builtinThemeNamed(look.scheme) : undefined
+    const colors = look.palette ? 'colors' : known ? `${known.label} theme` : look.scheme ? `"${look.scheme}" colors not found` : 'no colors set'
+    const font = look.fonts && `${look.fonts[0]}${look.fontSize ? ` ${look.fontSize}px` : ''}`
+    return [colors, font, look.cursorStyle && `${look.cursorStyle} cursor`].filter(Boolean).join(' · ')
+  }
+
+  const sentence = (words: string[]): string => (words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0])
+
+  async function importLook(look: TerminalLook): Promise<void> {
+    const next: Settings = { ...app.settings }
+    const got: string[] = []
+    const known = look.scheme ? builtinThemeNamed(look.scheme) : undefined
+    if (look.palette) {
+      const theme = themeFromPalette(look.terminal, look.name, look.palette)
+      next.customThemes = [...next.customThemes.filter((t) => t.id !== theme.id), theme].slice(-50)
+      next.terminalTheme = theme.id
+      got.push('colors')
+    } else if (known) {
+      next.terminalTheme = known.id
+      got.push(`the ${known.label} theme`)
+    }
+    if (look.fonts) {
+      next.terminalFontFamily = [...look.fonts.map((f) => `"${f.replace(/"/g, '')}"`), '"IBM Plex Mono"', 'monospace'].join(', ')
+      got.push('font')
+    }
+    if (look.fontSize) next.terminalFontSize = Math.min(32, Math.max(8, look.fontSize))
+    if (look.cursorStyle) {
+      next.cursorStyle = look.cursorStyle
+      got.push('cursor')
+    }
+    if (look.cursorBlink !== undefined) next.cursorBlink = look.cursorBlink
+    if (!got.length) {
+      app.toast(`${look.terminal} has no colors, font or cursor set`, 'error')
+      return
+    }
+    await window.api.settings.save(next).then(
+      () => app.toast(`Imported ${sentence(got)} from ${look.terminal}`),
+      (err) => app.fail(err)
+    )
+  }
+
+  async function removeImported(id: string): Promise<void> {
+    const next = { ...app.settings, customThemes: app.settings.customThemes.filter((t) => t.id !== id) }
+    if (next.terminalTheme === id) next.terminalTheme = 'auto'
+    await window.api.settings.save(next).catch((err) => app.fail(err))
   }
 
   let editors = $state<EditorChoice[]>([])
@@ -264,7 +326,7 @@
         </div>
         <h3>terminal theme</h3>
         <div class="themes" role="radiogroup" aria-label="terminal theme">
-          {#each TERMINAL_THEMES as t (t.id)}
+          {#each themeList as t (t.id)}
             {@const colors = terminalTheme(t.id, app.theme)}
             {@const words = t.label.split(' ')}
             <button
@@ -285,6 +347,12 @@
             </button>
           {/each}
         </div>
+        {#if importedActive}
+          <div class="row">
+            <span class="hint">Imported from your terminal.</span>
+            <button type="button" class="btn small" onclick={() => removeImported(importedActive.id)}>Remove this theme</button>
+          </div>
+        {/if}
         <h3>terminal text</h3>
         <label class="row">
           <span>font</span>
@@ -312,6 +380,30 @@
         <div class="checks">
           <Checkbox checked={s.cursorBlink} label="blinking cursor" onchange={(v) => set('cursorBlink', v)} />
         </div>
+        <h3>from your terminal</h3>
+        <p class="hint">Copy the colors, font and cursor from a terminal on this computer.</p>
+        {#if looks === null}
+          <div class="row">
+            <button type="button" class="btn" disabled={finding} onclick={findLooks}>{finding ? 'Looking…' : 'Find installed terminals'}</button>
+          </div>
+        {:else if looks.length}
+          <ul class="looks">
+            {#each looks as look, i (i)}
+              <li class="look">
+                <span class="swatches">
+                  {#each look.palette?.ansi.slice(1, 7) ?? [] as c, j (j)}<span style:background={c}></span>{/each}
+                </span>
+                <span class="stack">
+                  <span>{look.terminal}{look.name !== look.terminal ? ` · ${look.name}` : ''}</span>
+                  <span class="hint">{lookSummary(look)}</span>
+                </span>
+                <button type="button" class="btn small" onclick={() => importLook(look)}>Import</button>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="hint note">No settings found for Windows Terminal, Alacritty, Ghostty, Kitty, WezTerm, iTerm2 or Warp.</p>
+        {/if}
 
       {:else if current.id === 'terminal'}
         <label class="row">
@@ -642,5 +734,23 @@
     width: 12px;
     height: 12px;
     border-radius: 2px;
+  }
+  .looks {
+    margin: 8px 0 0;
+    padding: 0;
+    border: 1px solid var(--border-weak);
+    border-radius: var(--radius);
+    list-style: none;
+  }
+  .look {
+    display: grid;
+    grid-template-columns: 90px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-weak);
+  }
+  .look:first-child {
+    border-top: 0;
   }
 </style>

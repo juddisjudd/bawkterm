@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/defaults'
-import { appColors, findTerminalTheme } from './theme'
+import { appColors, findTerminalTheme, setImportedThemes } from './theme'
 import type {
   EditInfo,
   ConnectTarget,
@@ -216,6 +216,7 @@ class AppState {
   setVault(data: VaultData | null): void {
     this.vault = data
     if (data) {
+      setImportedThemes(data.settings.customThemes)
       this.settings = data.settings
       this.everUnlocked = true
       if (!this.restored) {

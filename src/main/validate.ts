@@ -1,6 +1,7 @@
 import { FOLDER_COLORS } from '@shared/defaults'
 import type {
   ConnectTarget,
+  CustomTheme,
   DockerAction,
   DockerCommand,
   FolderColor,
@@ -172,6 +173,29 @@ export function cleanTarget(v: unknown): ConnectTarget {
 }
 
 const THEMES = ['system', 'dark', 'light', 'terminal'] as const
+const THEME_COLORS = [
+  'background', 'foreground', 'cursor', 'cursorAccent', 'selectionBackground', 'selectionForeground',
+  'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+  'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'
+] as const
+
+function hex(v: unknown, what: string): string {
+  return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : fail(what)
+}
+
+function cleanTheme(v: unknown): CustomTheme {
+  const t = obj(v, 'theme')
+  const colors = obj(t.colors, 'theme colors')
+  const out: Record<string, string> = {}
+  for (const key of THEME_COLORS) if (colors[key] !== undefined) out[key] = hex(colors[key], 'theme color')
+  return {
+    id: line(t.id, 'theme id', 64),
+    label: line(t.label, 'theme name', 64),
+    dark: bool(t.dark, 'theme brightness'),
+    accent: hex(t.accent, 'theme accent'),
+    colors: out
+  }
+}
 const CURSORS = ['block', 'bar', 'underline'] as const
 
 // partial on purpose: the renderer sends whole settings objects, unknown keys are dropped
@@ -191,6 +215,7 @@ export function cleanSettings(v: unknown): Partial<Settings> {
   set('keepAliveSec', (x) => int(x, 'keepalive interval', 0, 600))
   set('editorCommand', (x) => line(x, 'editor', 1024))
   set('terminalTheme', (x) => line(x, 'terminal theme', 64))
+  set('customThemes', (x) => list(x, 'imported themes', 50, cleanTheme))
   for (const key of [
     'cursorBlink',
     'copyOnSelect',
