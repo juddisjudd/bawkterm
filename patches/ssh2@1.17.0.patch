@@ -1,0 +1,121 @@
+diff --git a/lib/agent.js b/lib/agent.js
+index bb495d1b191433c1be51929bb551bba1a8b03c1f..a8d209605943d5bcda610fff078ccaa26e3d248b 100644
+--- a/lib/agent.js
++++ b/lib/agent.js
+@@ -165,7 +165,9 @@ const PageantAgent = (() => {
+   const RET_ERR_BINSTDOUT = 14;
+   const RET_ERR_BADLEN = 15;
+ 
+-  const EXEPATH = resolve(__dirname, '..', 'util/pagent.exe');
++  // spawn cannot run a file inside an Electron asar archive, only its unpacked copy
++  const EXEPATH = resolve(__dirname, '..', 'util/pagent.exe')
++    .replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
+   const ERROR = {
+     [RET_ERR_BADARGS]: new Error('Invalid pagent.exe arguments'),
+     [RET_ERR_UNAVAILABLE]: new Error('Pageant is not running'),
+@@ -655,13 +657,20 @@ const AgentProtocol = (() => {
+               // TODO: verify signature type based on key and options used
+               // during initial sign request
+               binaryParser.init(signature, 0);
+-              binaryParser.readString(true);
+-              signature = binaryParser.readString();
++              const sigType = binaryParser.readString(true);
++              const sigStart = binaryParser.pos();
++              const rawSig = binaryParser.readString();
+               binaryParser.clear();
+ 
+-              if (signature === undefined)
++              if (rawSig === undefined)
+                 return cb(new Error('Malformed OpenSSH signature format'));
+ 
++              // security key signatures end with flags and a counter, so they stay framed
++              if (typeof sigType === 'string' && sigType.startsWith('sk-'))
++                signature = signature.subarray(sigStart);
++              else
++                signature = rawSig;
++
+               req.cb(null, signature);
+               break;
+             }
+diff --git a/lib/protocol/Protocol.js b/lib/protocol/Protocol.js
+index 7302488102161b5b627f6f089d502caa6df0f356..b769871b35070c43661c18024e72016f3090919e 100644
+--- a/lib/protocol/Protocol.js
++++ b/lib/protocol/Protocol.js
+@@ -701,11 +701,14 @@ class Protocol {
+       if (signature === false)
+         throw new Error('Error while converting handshake signature');
+ 
++      // security key signatures from the agent arrive already framed
++      const framed = keyType.startsWith('sk-');
+       const sigLen = signature.length;
++      const sigFieldLen = (framed ? 0 : 4) + sigLen;
+       p = this._packetRW.write.allocStart;
+       packet = this._packetRW.write.alloc(
+         1 + 4 + userLen + 4 + 14 + 4 + 9 + 1 + 4 + algoLen + 4 + pubKeyLen + 4
+-          + 4 + algoLen + 4 + sigLen
++          + 4 + algoLen + sigFieldLen
+       );
+ 
+       // TODO: simply copy from original "packet" to new `packet` to avoid
+@@ -729,13 +732,17 @@ class Protocol {
+       writeUInt32BE(packet, pubKeyLen, p += algoLen);
+       packet.set(pubKey, p += 4);
+ 
+-      writeUInt32BE(packet, 4 + algoLen + 4 + sigLen, p += pubKeyLen);
++      writeUInt32BE(packet, 4 + algoLen + sigFieldLen, p += pubKeyLen);
+ 
+       writeUInt32BE(packet, algoLen, p += 4);
+       packet.utf8Write(keyAlgo, p += 4, algoLen);
++      p += algoLen;
+ 
+-      writeUInt32BE(packet, sigLen, p += algoLen);
+-      packet.set(signature, p += 4);
++      if (!framed) {
++        writeUInt32BE(packet, sigLen, p);
++        p += 4;
++      }
++      packet.set(signature, p);
+ 
+       // Servers shouldn't send packet type 60 in response to signed publickey
+       // attempts, but if they do, interpret as type 60.
+diff --git a/lib/protocol/keyParser.js b/lib/protocol/keyParser.js
+index a276c1aed3dca46469b0c566ad12f989c65e92e5..09412dfbbae37d7b2c4459511404b2267dd4c0bb 100644
+--- a/lib/protocol/keyParser.js
++++ b/lib/protocol/keyParser.js
+@@ -1309,7 +1309,36 @@ RFC4716_Public.prototype = BaseKey;
+ }
+ 
+ 
++// security key public keys are only ever handed to an agent, which does the signing
++function parseSKPublic(data, type, comment) {
++  const start = data._pos || 0;
++  let pos = start;
++  if (type === 'sk-ecdsa-sha2-nistp256@openssh.com') {
++    if (readString(data, pos, true) !== 'nistp256')
++      return new Error('Malformed OpenSSH public key');
++    pos = data._pos;
++  }
++  const pub = readString(data, pos);
++  if (pub === undefined
++      || (type === 'sk-ssh-ed25519@openssh.com' && pub.length !== 32)) {
++    return new Error('Malformed OpenSSH public key');
++  }
++  if (readString(data, data._pos) === undefined)
++    return new Error('Malformed OpenSSH public key');
++  const fields = bufferSlice(data, start, data._pos);
++  const typeLen = Buffer.byteLength(type);
++  const pubSSH = Buffer.allocUnsafe(4 + typeLen + fields.length);
++  writeUInt32BE(pubSSH, typeLen, 0);
++  pubSSH.utf8Write(type, 4, typeLen);
++  pubSSH.set(fields, 4 + typeLen);
++  return new OpenSSH_Public(type, comment, null, pubSSH, null);
++}
++
+ function parseDER(data, baseType, comment, fullType) {
++  if (baseType === 'sk-ssh-ed25519@openssh.com'
++      || baseType === 'sk-ecdsa-sha2-nistp256@openssh.com') {
++    return parseSKPublic(data, baseType, comment);
++  }
+   if (!isSupportedKeyType(baseType))
+     return new Error(`Unsupported OpenSSH public key type: ${baseType}`);
+ 

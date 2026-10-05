@@ -65,5 +65,8 @@
     "esbuild"
   ],
   "homepage": "https://github.com/juddisjudd/bawkterm",
-  "desktopName": "bawkterm.desktop"
+  "desktopName": "bawkterm.desktop",
+  "patchedDependencies": {
+    "ssh2@1.17.0": "patches/ssh2@1.17.0.patch"
+  }
 }

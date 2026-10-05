@@ -175,7 +175,7 @@
       {#each vault.keys as k (k.id)}<option value={k.id}>{k.label} ({k.type})</option>{/each}
     </select>
   </label>
-  <Checkbox bind:checked={host.useAgent} label="try keys from the SSH agent (OpenSSH agent or Pageant)" />
+  <Checkbox bind:checked={host.useAgent} label="try keys from SSH agents (OpenSSH agent and Pageant, security keys included)" />
   <label class="field">
     <span class="label">run after connect</span>
     <input class="input" bind:value={host.startupCommand} placeholder="tmux attach || tmux new" spellcheck="false" />

@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import type { Duplex } from 'node:stream'
 import {
@@ -12,6 +11,7 @@ import {
 import { hostKeyId } from '@shared/defaults'
 import type { ConnectTarget, PromptRequest, PromptResponse, SshKey } from '@shared/types'
 import { isEncryptedKeyError, parsePrivateKey, parsePublicBlob } from '../keys'
+import { AllAgents, agentPaths } from './agent'
 import type { Vault } from '../vault'
 
 export type Ask = (req: Omit<PromptRequest, 'id' | 'sessionId'>) => Promise<PromptResponse | null>
@@ -54,7 +54,6 @@ const SUPPORTED_HOST_KEY = [
   'ssh-dss'
 ]
 const READY_TIMEOUT = 20_000
-const OPENSSH_AGENT_PIPE = '\\\\.\\pipe\\openssh-ssh-agent'
 
 export class CancelledError extends Error {
   constructor() {
@@ -83,12 +82,6 @@ function resolveTarget(target: ConnectTarget, vault: Vault): Resolved {
     useAgent: host.useAgent,
     jumpHostId: host.jumpHostId
   }
-}
-
-function agentPath(): string | undefined {
-  if (process.env.SSH_AUTH_SOCK) return process.env.SSH_AUTH_SOCK
-  if (process.platform === 'win32') return existsSync(OPENSSH_AGENT_PIPE) ? OPENSSH_AGENT_PIPE : 'pageant'
-  return undefined
 }
 
 function friendlyError(err: Error & { code?: string; level?: string }, r: Resolved): Error {
@@ -202,6 +195,8 @@ async function unlockKey(r: Resolved, ctx: ConnectContext): Promise<ParsedKey | 
 interface AuthHooks {
   save: (password: string) => void
   abort: (err: Error) => void
+  pause: () => void
+  resume: () => void
 }
 
 function makeAuthHandler(r: Resolved, ctx: ConnectContext, hooks: AuthHooks) {
@@ -246,10 +241,18 @@ function makeAuthHandler(r: Resolved, ctx: ConnectContext, hooks: AuthHooks) {
       const key = await unlockKey(r, ctx)
       if (key) return { type: 'publickey', username: r.username, key }
     }
-    const agent = r.useAgent ? agentPath() : undefined
-    if (agent && !tried.has('agent') && allowed(left, 'publickey')) {
+    const agents = r.useAgent ? agentPaths() : []
+    if (agents.length && !tried.has('agent') && allowed(left, 'publickey')) {
       tried.add('agent')
       ctx.onProgress?.('Trying SSH agent')
+      // the agent may be waiting for a PIN or a touch, which is user think-time like a prompt
+      const agent = new AllAgents(agents, {
+        signing: (key) => {
+          hooks.pause()
+          if (key.type.startsWith('sk-')) ctx.onProgress?.('Touch your security key')
+        },
+        signed: hooks.resume
+      })
       return { type: 'agent', username: r.username, agent }
     }
     if (r.password && !tried.has('password') && allowed(left, 'password')) {
@@ -365,7 +368,11 @@ function connectOne(r: Resolved, ctx: ConnectContext, sock?: Duplex): Promise<Cl
       },
       authHandler: makeAuthHandler(r, local, {
         save: (password) => (pendingPassword = password),
-        abort: fail
+        abort: fail,
+        pause: disarm,
+        resume: () => {
+          if (!settled) arm()
+        }
       })
     })
   })
