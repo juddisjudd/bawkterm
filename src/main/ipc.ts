@@ -1,4 +1,4 @@
-import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { promises as fsp } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -7,7 +7,11 @@ import type { Host, Identity, IpcResult, SshKey, VaultData } from '@shared/types
 import { describeKey, generateKey } from './keys'
 import { localFs } from './local-fs'
 import { Prompter } from './prompts'
-import { importSshConfig } from './ssh-config'
+import { writeBackup } from './backup'
+import { writeFileAtomic } from './files'
+import { findSources, importFile, importSource, IMPORT_SOURCES } from './import'
+import { hostsToCsv } from './import/csv'
+import { hostsToSshConfig } from './import/export'
 import { SftpSessions } from './ssh/sftp'
 import { SyncEngine, encodeLink } from './sync'
 import { DockerSessions } from './docker'
@@ -54,6 +58,15 @@ function touch<T extends { updatedAt: number }>(items: T[], match: (item: T) => 
 }
 
 const kept = (secret: string): string => (secret ? SECRET_KEPT : '')
+
+// Windows cannot resolve Downloads when that known folder is redirected or missing
+function saveFolder(): string {
+  try {
+    return app.getPath('downloads')
+  } catch {
+    return homedir()
+  }
+}
 
 // the window never holds passwords, private keys or the sync key; it sees SECRET_KEPT where one is stored
 const redactHost = (h: Host): Host => ({ ...h, password: kept(h.password) })
@@ -326,7 +339,57 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
     })
   })
 
-  handle('import:sshConfig', () => importSshConfig(vault))
+  handle('import:sources', () => findSources())
+  handle('import:source', (source) => importSource(vault, oneOf(source, 'import source', IMPORT_SOURCES)))
+  handle('import:file', async () => {
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Import hosts or restore a backup',
+      defaultPath: homedir(),
+      properties: ['openFile', 'showHiddenFiles'],
+      filters: [
+        { name: 'Host lists and backups', extensions: ['csv', 'xml', 'mxtsessions', 'ini', 'bawkbackup', 'conf', 'config', 'txt'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    })
+    const file = res.filePaths[0]
+    if (res.canceled || !file) return null
+    const ask = prompter.forSession('import')
+    return importFile(vault, file, async (retry) => {
+      const answer = await ask({
+        kind: 'passphrase',
+        title: 'Restore backup',
+        message: retry ? 'Wrong password. Try again.' : 'Enter the master password that this backup was made with.',
+        fields: [{ name: 'password', label: 'master password', secret: true }],
+        confirmLabel: 'Restore'
+      })
+      return answer ? answer.values.password : null
+    })
+  })
+  handle('export:hosts', async (format) => {
+    const which = oneOf(format, 'export format', ['ssh-config', 'csv'] as const)
+    const res = await dialog.showSaveDialog(win, {
+      title: which === 'csv' ? 'Export hosts as CSV' : 'Export hosts as an SSH config file',
+      defaultPath: join(saveFolder(), which === 'csv' ? 'bawkterm-hosts.csv' : 'bawkterm-ssh-config'),
+      filters: which === 'csv' ? [{ name: 'CSV', extensions: ['csv'] }] : [{ name: 'All files', extensions: ['*'] }]
+    })
+    if (res.canceled || !res.filePath) return null
+    const data = vault.get()
+    await writeFileAtomic(res.filePath, which === 'csv' ? hostsToCsv(data.hosts) : hostsToSshConfig(data))
+    return res.filePath
+  })
+  // a backup holds every secret, so it needs the master password, which also encrypts it
+  handle('export:backup', async (pw) => {
+    const master = password(pw)
+    await vault.verifyPassword(master)
+    const res = await dialog.showSaveDialog(win, {
+      title: 'Save encrypted backup',
+      defaultPath: join(saveFolder(), `bawkterm-backup-${new Date().toISOString().slice(0, 10)}.bawkbackup`),
+      filters: [{ name: 'bawkterm backup', extensions: ['bawkbackup'] }]
+    })
+    if (res.canceled || !res.filePath) return null
+    await writeFileAtomic(res.filePath, await writeBackup(vault.get(), master))
+    return res.filePath
+  })
 
   handle('ssh:open', (sid, target, cols, rows, command) =>
     terminals.open(id(sid), cleanTarget(target), size(cols), size(rows), command === undefined ? undefined : text(command, 'command'))

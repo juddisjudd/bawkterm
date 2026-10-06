@@ -19,7 +19,8 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 - **SSH terminal**: tabs with WebGL rendering, split panes (side by side or stacked, mixing SSH, SFTP and Docker) with broadcast input to type into every terminal of a tab at once, jump hosts (chained), agent auth (OpenSSH agent and Pageant, including FIDO2 security keys such as a YubiKey), keyboard-interactive and key auth, auto-reconnect, a per-host startup command, paste protection, scrollback search, per-tab zoom, 31 themes including the Black & Gems, Monokai and Coffee variants of [Bearded Theme](https://github.com/BeardedBear/bearded-theme) (the app's colors can match the terminal's), colors, font and cursor imported from Windows Terminal, Alacritty, Ghostty, Kitty, WezTerm, iTerm2 or Warp, tabs reopened on launch.
 - **SFTP**: side-by-side local and remote panes, drag and drop (also from Explorer), recursive transfers with Replace / Keep both / Skip, type-to-filter, favorite folders and folder colors per host, "Open terminal here".
 - **Built-in editor**: "Edit in editor" opens remote files in a tab with syntax highlighting for about 100 languages, search, and Ctrl+S (Cmd+S on macOS) to save back. You can pick VS Code, another installed editor or any program instead.
-- **Keychain**: generate ed25519, RSA and ECDSA keys; import OpenSSH, PEM and PuTTY keys; reusable identities (username plus password or key); import hosts from `~/.ssh/config`.
+- **Keychain**: generate ed25519, RSA and ECDSA keys; import OpenSSH, PEM and PuTTY `.ppk` keys (formats 2 and 3, with or without a passphrase); reusable identities (username plus password or key).
+- **Import and export**: bring hosts over from `~/.ssh/config`, PuTTY, KiTTY, WinSCP (with saved passwords), FileZilla (SFTP sites), MobaXterm (SSH and SFTP sessions) or a CSV file, with their folders, keys and jump hosts. Export hosts as an SSH config or CSV file, or the whole vault as an encrypted backup.
 - **Docker over SSH**: containers per host grouped by Compose project, CPU and memory, start / stop / restart, a shell or live logs in a terminal tab.
 - **Remote Desktop hosts**: opens Windows Remote Desktop (or FreeRDP 3 on macOS and Linux) already signed in, optionally through an SSH jump host.
 - **Snippets**: saved commands you run from Ctrl+Shift+S (Cmd+Shift+S on macOS).
@@ -100,7 +101,8 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
   - **Passkey**: the WebAuthn PRF extension with a random salt and user verification.
   - **Auto-unlock**: Windows DPAPI, or the Secret Service keyring (GNOME Keyring, KWallet) on Linux. Anyone signed in to your account can then open the vault, and the settings screen says so.
 - **Changing the master password creates a new vault key.** Older copies and backups of the vault stop opening, and Windows Hello and passkey unlock are turned off until you set them up again.
-- Adding an unlock method, turning on auto-unlock, revealing a saved password and copying the sync link all ask for the master password again.
+- Adding an unlock method, turning on auto-unlock, revealing a saved password, copying the sync link and saving a backup all ask for the master password again.
+- **Encrypted backups** (settings → security) use the same scrypt and AES-256-GCM scheme, keyed by your master password at the time you save them. A backup keeps opening with that password after you change it. Restoring adds missing items and newer copies, and never deletes anything.
 - Writes are atomic (temp file, flush, rename). The previous version is kept as an encrypted `vault.json.bak`.
 - The vault locks after an idle timeout (30 minutes by default), when Windows locks or sleeps, and on Ctrl+Shift+L (Cmd+Shift+L on macOS).
 
@@ -114,6 +116,7 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
   - Only clipboard and notification permissions are granted.
   - The installed app has its Electron fuses set (no running as plain Node, no `NODE_OPTIONS`, no inspector, asar integrity check), no dev tools, and it refuses to start with debugging flags.
 - System tools (`powershell`, `cmdkey`, `mstsc`, `reg`, Notepad) are run by full path, and other programs are looked up on `PATH` without the working folder, so a same-named program there is never picked up.
+- **Imports** only read other apps' files and registry entries. A registry export (which holds WinSCP's saved passwords) goes to a private temporary folder that is deleted right after reading. Imported hosts pass the same checks as hosts from sync. PuTTY keys with a passphrase have their key-derivation cost capped, so a crafted `.ppk` cannot stall the app.
 
 ### Talking to servers
 

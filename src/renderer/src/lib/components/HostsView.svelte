@@ -2,9 +2,11 @@
   import Search from '@lucide/svelte/icons/search'
   import Plus from '@lucide/svelte/icons/plus'
   import Pencil from '@lucide/svelte/icons/pencil'
+  import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import type { AdhocTarget, Host } from '@shared/types'
   import { app, type MenuItem } from '$lib/state.svelte'
   import { ago } from '$lib/format'
+  import { openExportMenu, openImportMenu } from '$lib/transfer'
   import PageHeader from './PageHeader.svelte'
   import HostEditor from './HostEditor.svelte'
 
@@ -63,15 +65,6 @@
     quick = ''
   }
 
-  async function importConfig(): Promise<void> {
-    try {
-      const res = await window.api.importSshConfig()
-      app.toast(`Imported ${res.hosts} hosts and ${res.keys} keys${res.skipped.length ? `, skipped ${res.skipped.length}` : ''}`)
-    } catch (err) {
-      app.fail(err)
-    }
-  }
-
   async function remove(h: Host): Promise<void> {
     if (!(await app.confirm('Delete host', `Delete "${h.label || h.address}" from the vault?`))) return
     await window.api.hosts.remove(h.id).catch((err) => app.fail(err))
@@ -106,7 +99,8 @@
 <div class="page">
   <PageHeader title="hosts" subtitle={`${vault.hosts.length} saved`}>
     {#snippet actions()}
-      <button type="button" class="btn" onclick={importConfig}>Import ~/.ssh/config</button>
+      <button type="button" class="btn" aria-haspopup="menu" onclick={(e) => openImportMenu(e.currentTarget)}>Import <ChevronDown /></button>
+      <button type="button" class="btn" aria-haspopup="menu" onclick={(e) => openExportMenu(e.currentTarget)}>Export <ChevronDown /></button>
       <button type="button" class="btn strong" onclick={() => (app.editingHost = '')}><Plus /> New host</button>
     {/snippet}
   </PageHeader>
@@ -139,7 +133,7 @@
   {#if !vault.hosts.length}
     <div class="empty">
       <p class="strong">[ ] no hosts yet</p>
-      <p class="muted">Add a host, import your ~/.ssh/config, or type user@host above to connect once.</p>
+      <p class="muted">Add a host, import from ~/.ssh/config, PuTTY, WinSCP, FileZilla or MobaXterm, or type user@host above to connect once.</p>
     </div>
   {/if}
 

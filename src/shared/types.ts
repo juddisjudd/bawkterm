@@ -359,7 +359,19 @@ export interface PromptResponse {
 export interface ImportSummary {
   hosts: number
   keys: number
+  identities?: number
+  snippets?: number
   skipped: string[]
 }
+
+export type ImportSourceId = 'ssh-config' | 'putty' | 'kitty' | 'winscp' | 'filezilla' | 'mobaxterm'
+
+export interface ImportSource {
+  id: ImportSourceId
+  label: string
+  count: number
+}
+
+export type HostExportFormat = 'ssh-config' | 'csv'
 
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string }

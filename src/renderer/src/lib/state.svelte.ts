@@ -608,6 +608,11 @@ class AppState {
     event.preventDefault()
     this.menu = { x: event.clientX, y: event.clientY, items }
   }
+
+  openMenuBelow(anchor: HTMLElement, items: MenuItem[]): void {
+    const box = anchor.getBoundingClientRect()
+    this.menu = { x: box.left, y: box.bottom + 4, items }
+  }
 }
 
 export const app = new AppState()

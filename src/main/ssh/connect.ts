@@ -11,6 +11,7 @@ import {
 import { hostKeyId } from '@shared/defaults'
 import type { ConnectTarget, PromptRequest, PromptResponse, SshKey } from '@shared/types'
 import { isEncryptedKeyError, parsePrivateKey, parsePublicBlob } from '../keys'
+import { isPpk, ppkToOpenSsh } from '../ppk'
 import { AllAgents, agentPaths } from './agent'
 import type { Vault } from '../vault'
 
@@ -179,12 +180,17 @@ async function unlockKey(r: Resolved, ctx: ConnectContext): Promise<ParsedKey | 
     const parsed = parsePrivateKey(key.privateKey, answer.values.passphrase)
     if (parsed instanceof Error) continue
     if (answer.checked) {
+      const converted = isPpk(key.privateKey) ? ppkToOpenSsh(key.privateKey, answer.values.passphrase) : null
       await ctx.vault.mutate((d) => {
         const stored = d.keys.find((k) => k.id === key.id)
-        if (stored) {
+        if (!stored) return
+        if (typeof converted === 'string') {
+          stored.privateKey = converted
+          stored.encrypted = false
+        } else {
           stored.passphrase = answer.values.passphrase
-          stored.updatedAt = Date.now()
         }
+        stored.updatedAt = Date.now()
       })
     }
     return parsed

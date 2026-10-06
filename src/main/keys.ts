@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { utils, type ParsedKey } from 'ssh2'
 import type { KeyGenRequest, KeyImportRequest, SshKey } from '@shared/types'
+import { isPpk, ppkPublic, ppkToOpenSsh } from './ppk'
 
 export function fingerprintOf(publicBlob: Buffer): string {
   return 'SHA256:' + createHash('sha256').update(publicBlob).digest('base64').replace(/=+$/, '')
@@ -11,6 +12,10 @@ export function isEncryptedKeyError(err: Error): boolean {
 }
 
 export function parsePrivateKey(pem: string, passphrase?: string): ParsedKey | Error {
+  if (isPpk(pem)) {
+    const openssh = ppkToOpenSsh(pem, passphrase)
+    return openssh instanceof Error ? openssh : parsePrivateKey(openssh)
+  }
   const parsed = utils.parseKey(pem, passphrase || undefined)
   if (parsed instanceof Error) return parsed
   const key = Array.isArray(parsed) ? parsed[0] : parsed
@@ -27,17 +32,40 @@ export function parsePublicBlob(blob: Buffer): string {
 
 type KeyFields = Omit<SshKey, 'id' | 'createdAt' | 'updatedAt'>
 
+const lockedMessage = (passphrase: string): string =>
+  passphrase ? 'Wrong passphrase for this key' : 'This key is encrypted. Enter its passphrase.'
+
+// a PuTTY key keeps its public half unencrypted, so a locked one still shows its type and fingerprint
+function lockedPpk(label: string, privateKey: string): KeyFields {
+  const pub = ppkPublic(privateKey)
+  return {
+    label: label || pub.comment || 'Encrypted key',
+    type: pub.type,
+    privateKey,
+    passphrase: '',
+    publicKey: `${pub.type} ${pub.blob.toString('base64')}${pub.comment ? ` ${pub.comment}` : ''}`,
+    fingerprint: fingerprintOf(pub.blob),
+    encrypted: true
+  }
+}
+
 export function describeKey(req: KeyImportRequest, allowLocked = false): KeyFields {
   const privateKey = req.privateKey.replace(/\r\n/g, '\n').trim() + '\n'
+  // a PuTTY key that opens is stored as OpenSSH, so connecting never pays for its key derivation again
+  if (isPpk(privateKey)) {
+    const openssh = ppkToOpenSsh(privateKey, req.passphrase)
+    if (!(openssh instanceof Error)) return describeKey({ ...req, privateKey: openssh, passphrase: '' }, allowLocked)
+    if (!isEncryptedKeyError(openssh)) throw new Error(`Unreadable key: ${openssh.message}`)
+    if (!allowLocked) throw new Error(lockedMessage(req.passphrase))
+    return lockedPpk(req.label, privateKey)
+  }
   const bare = parsePrivateKey(privateKey)
   const encrypted = bare instanceof Error && isEncryptedKeyError(bare)
   if (bare instanceof Error && !encrypted) throw new Error(`Unreadable key: ${bare.message}`)
 
   const parsed = encrypted ? parsePrivateKey(privateKey, req.passphrase) : bare
   if (parsed instanceof Error) {
-    if (!allowLocked) {
-      throw new Error(req.passphrase ? 'Wrong passphrase for this key' : 'This key is encrypted. Enter its passphrase.')
-    }
+    if (!allowLocked) throw new Error(lockedMessage(req.passphrase))
     return {
       label: req.label || 'Encrypted key',
       type: 'encrypted',

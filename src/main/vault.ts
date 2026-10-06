@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS, emptyLocal, emptySync, emptyVault } from '@shared/def
 import type { Settings, VaultData, VaultStatus } from '@shared/types'
 import { writeFileAtomic } from './files'
 
-interface KdfParams {
+export interface KdfParams {
   name: 'scrypt'
   N: number
   r: number
@@ -47,7 +47,7 @@ const KDF_DEFAULTS = { N: 2 ** 17, r: 8, p: 1 }
 const MIN_PASSWORD = 8
 const DATA_AAD = Buffer.from('bawkterm-vault/1')
 
-function deriveKey(password: string, kdf: KdfParams): Promise<Buffer> {
+export function deriveKey(password: string, kdf: KdfParams): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     scrypt(
       password.normalize('NFKC'),
@@ -66,11 +66,11 @@ function osEncryptionAvailable(): boolean {
   return !['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend())
 }
 
-function newKdf(): KdfParams {
+export function newKdf(): KdfParams {
   return { name: 'scrypt', ...KDF_DEFAULTS, salt: randomBytes(16).toString('base64') }
 }
 
-function encrypt(key: Buffer, plaintext: Buffer, aad: Buffer): Wrapped {
+export function encrypt(key: Buffer, plaintext: Buffer, aad: Buffer): Wrapped {
   const iv = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 })
   cipher.setAAD(aad)
@@ -78,7 +78,7 @@ function encrypt(key: Buffer, plaintext: Buffer, aad: Buffer): Wrapped {
   return { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') }
 }
 
-function decrypt(key: Buffer, box: Wrapped, aad: Buffer): Buffer {
+export function decrypt(key: Buffer, box: Wrapped, aad: Buffer): Buffer {
   const iv = Buffer.from(box.iv, 'base64')
   const tag = Buffer.from(box.tag, 'base64')
   if (iv.length !== 12 || tag.length !== 16) throw new Error('Damaged encrypted data')

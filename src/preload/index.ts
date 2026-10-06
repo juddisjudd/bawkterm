@@ -77,7 +77,13 @@ const api: BawkApi = {
   settings: {
     save: (settings) => invoke('settings:save', settings)
   },
-  importSshConfig: () => invoke('import:sshConfig'),
+  transfer: {
+    sources: () => invoke('import:sources'),
+    importSource: (id) => invoke('import:source', id),
+    importFile: () => invoke('import:file'),
+    exportHosts: (format) => invoke('export:hosts', format),
+    exportBackup: (pw) => invoke('export:backup', pw)
+  },
   ssh: {
     open: (sessionId, target, cols, rows, command) => invoke('ssh:open', sessionId, target, cols, rows, command),
     write: (sessionId, data) => ipcRenderer.send('ssh:write', sessionId, data),

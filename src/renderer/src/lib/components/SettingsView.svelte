@@ -17,6 +17,7 @@
   import CircleArrowDown from '@lucide/svelte/icons/circle-arrow-down'
   import Keyboard from '@lucide/svelte/icons/keyboard'
   import { MOD, SPLIT_KEYS, isMac, shellSafeLabel } from '$lib/keys'
+  import { exportBackup, importFromFile, openExportMenu, openImportMenu } from '$lib/transfer'
 
   const s = $derived(app.settings)
   const windows = window.api.platform === 'win32'
@@ -270,16 +271,6 @@
     }
   }
 
-  async function importConfig(): Promise<void> {
-    try {
-      const res = await window.api.importSshConfig()
-      app.toast(`Imported ${res.hosts} hosts and ${res.keys} keys`)
-      if (res.skipped.length) app.toast(`Skipped: ${res.skipped.slice(0, 3).join('; ')}`, 'error')
-    } catch (err) {
-      app.fail(err)
-    }
-  }
-
   const themes: { id: ThemeSetting; label: string }[] = [
     { id: 'system', label: 'system' },
     { id: 'dark', label: 'dark' },
@@ -433,10 +424,14 @@
           <Checkbox checked={s.autoReconnect} label="reconnect automatically when a connection drops" onchange={(v) => set('autoReconnect', v)} />
           <Checkbox checked={s.restoreTabs} label="reopen my tabs when bawkterm starts" onchange={(v) => set('restoreTabs', v)} />
         </div>
-        <h3>import</h3>
+        <h3>import and export</h3>
         <div class="row">
-          <span>hosts and keys from ~/.ssh/config</span>
-          <button type="button" class="btn" onclick={importConfig}>Import</button>
+          <span>hosts from ~/.ssh/config, PuTTY, WinSCP, FileZilla, MobaXterm or a CSV file</span>
+          <button type="button" class="btn" aria-haspopup="menu" onclick={(e) => openImportMenu(e.currentTarget)}>Import</button>
+        </div>
+        <div class="row">
+          <span>hosts as an SSH config or CSV file, without passwords or keys</span>
+          <button type="button" class="btn" aria-haspopup="menu" onclick={(e) => openExportMenu(e.currentTarget)}>Export</button>
         </div>
 
       {:else if current.id === 'files'}
@@ -524,6 +519,22 @@
           </div>
           <p class="hint note">Your master password always works too. These only add faster ways to unlock.</p>
         {/if}
+
+        <h3>backup</h3>
+        <div class="row">
+          <span class="stack">
+            <span>encrypted backup file</span>
+            <span class="hint">Hosts, passwords, keys, identities, snippets and trusted host keys, encrypted with your master password</span>
+          </span>
+          <button type="button" class="btn" onclick={exportBackup}>Save backup…</button>
+        </div>
+        <div class="row">
+          <span class="stack">
+            <span>restore from a backup</span>
+            <span class="hint">Adds what this vault is missing and never deletes anything</span>
+          </span>
+          <button type="button" class="btn" onclick={importFromFile}>Restore…</button>
+        </div>
 
       {:else if current.id === 'updates'}
         {#if update.supported}

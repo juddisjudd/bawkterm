@@ -10,7 +10,10 @@ import type {
   ConnectTarget,
   FileEntry,
   Host,
+  HostExportFormat,
   Identity,
+  ImportSource,
+  ImportSourceId,
   ImportSummary,
   KeyGenRequest,
   KeyImportRequest,
@@ -97,7 +100,13 @@ export interface BawkApi {
   settings: {
     save(settings: Settings): Promise<void>
   }
-  importSshConfig(): Promise<ImportSummary>
+  transfer: {
+    sources(): Promise<ImportSource[]>
+    importSource(id: ImportSourceId): Promise<ImportSummary>
+    importFile(): Promise<ImportSummary | null>
+    exportHosts(format: HostExportFormat): Promise<string | null>
+    exportBackup(masterPassword: string): Promise<string | null>
+  }
   ssh: {
     open(sessionId: string, target: ConnectTarget, cols: number, rows: number, command?: string): Promise<void>
     write(sessionId: string, data: string): void
