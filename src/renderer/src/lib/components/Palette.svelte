@@ -105,17 +105,18 @@
       else terminal.run(item.snippet.command)
       return
     }
+    const place = app.palettePlace
     if (item.kind === 'folder') {
       app.rememberPath(item.host.id, item.path)
-      app.openHost('sftp', item.host.id)
+      app.openHost('sftp', item.host.id, place)
       return
     }
     const sftp = shift
     const kind = ctrl ? 'docker' : sftp ? 'sftp' : 'ssh'
-    if (item.kind === 'host') app.openHost(kind, item.host.id)
+    if (item.kind === 'host') app.openHost(kind, item.host.id, place)
     else if (item.kind === 'adhoc') {
       const t = item.target
-      app.openTab(kind, { adhoc: t }, t.username ? `${t.username}@${t.address}` : t.address)
+      app.openTab(kind, { adhoc: t }, t.username ? `${t.username}@${t.address}` : t.address, undefined, {}, place)
     } else item.run()
   }
 
@@ -143,7 +144,11 @@
         bind:value={query}
         oninput={() => (index = 0)}
         {onkeydown}
-        placeholder={snippetMode ? 'search snippets' : 'search hosts or type user@host:port'}
+        placeholder={snippetMode
+          ? 'search snippets'
+          : app.palettePlace
+            ? 'open in a new pane: search hosts or type user@host:port'
+            : 'search hosts or type user@host:port'}
         {@attach focusOnMount()}
         spellcheck="false"
       />

@@ -16,7 +16,7 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 
 ## Features
 
-- **SSH terminal**: tabs with WebGL rendering, jump hosts (chained), agent auth (OpenSSH agent and Pageant, including FIDO2 security keys such as a YubiKey), keyboard-interactive and key auth, auto-reconnect, a per-host startup command, paste protection, scrollback search, per-tab zoom, 31 themes including the Black & Gems, Monokai and Coffee variants of [Bearded Theme](https://github.com/BeardedBear/bearded-theme) (the app's colors can match the terminal's), colors, font and cursor imported from Windows Terminal, Alacritty, Ghostty, Kitty, WezTerm, iTerm2 or Warp, tabs reopened on launch.
+- **SSH terminal**: tabs with WebGL rendering, split panes (side by side or stacked, mixing SSH, SFTP and Docker) with broadcast input to type into every terminal of a tab at once, jump hosts (chained), agent auth (OpenSSH agent and Pageant, including FIDO2 security keys such as a YubiKey), keyboard-interactive and key auth, auto-reconnect, a per-host startup command, paste protection, scrollback search, per-tab zoom, 31 themes including the Black & Gems, Monokai and Coffee variants of [Bearded Theme](https://github.com/BeardedBear/bearded-theme) (the app's colors can match the terminal's), colors, font and cursor imported from Windows Terminal, Alacritty, Ghostty, Kitty, WezTerm, iTerm2 or Warp, tabs reopened on launch.
 - **SFTP**: side-by-side local and remote panes, drag and drop (also from Explorer), recursive transfers with Replace / Keep both / Skip, type-to-filter, favorite folders and folder colors per host, "Open terminal here".
 - **Built-in editor**: "Edit in editor" opens remote files in a tab with syntax highlighting for about 100 languages, search, and Ctrl+S (Cmd+S on macOS) to save back. You can pick VS Code, another installed editor or any program instead.
 - **Keychain**: generate ed25519, RSA and ECDSA keys; import OpenSSH, PEM and PuTTY keys; reusable identities (username plus password or key); import hosts from `~/.ssh/config`.
@@ -193,7 +193,10 @@ The script refuses a dirty tree or a branch other than `main`. It bumps `package
 | Ctrl+Shift+F | Cmd+F | search terminal output |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Cmd+= / Cmd+- / Cmd+0 | zoom terminal text in, out, reset |
 | Ctrl+Tab | Ctrl+Tab | next tab |
-| Ctrl+Shift+W | Cmd+W | close tab |
+| Ctrl+Shift+W | Cmd+W | close tab or pane |
+| Ctrl+Shift+D | Cmd+D | split right |
+| Ctrl+Shift+E | Cmd+Shift+D | split down |
+| Ctrl+Alt+arrows | Cmd+Option+arrows | move between panes |
 | Ctrl+Shift+C / V | Cmd+C / V | copy / paste in terminal (right click also copies or pastes) |
 | Ctrl+Shift+L | Cmd+Shift+L | lock vault |
 | Ctrl+click | Cmd+click | open a link in the terminal |

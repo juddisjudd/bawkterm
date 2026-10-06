@@ -16,7 +16,7 @@
   import Lock from '@lucide/svelte/icons/lock'
   import CircleArrowDown from '@lucide/svelte/icons/circle-arrow-down'
   import Keyboard from '@lucide/svelte/icons/keyboard'
-  import { MOD, isMac, shellSafeLabel } from '$lib/keys'
+  import { MOD, SPLIT_KEYS, isMac, shellSafeLabel } from '$lib/keys'
 
   const s = $derived(app.settings)
   const windows = window.api.platform === 'win32'
@@ -558,7 +558,10 @@
           <dt><span class="kbd">{shellKey('f')}</span></dt><dd>search terminal output</dd>
           <dt><span class="kbd">{modKey}+= / - / 0</span></dt><dd>zoom terminal text in, out, reset</dd>
           <dt><span class="kbd">ctrl+tab</span></dt><dd>next tab</dd>
-          <dt><span class="kbd">{shellKey('w')}</span></dt><dd>close tab</dd>
+          <dt><span class="kbd">{shellKey('w')}</span></dt><dd>close tab or pane</dd>
+          <dt><span class="kbd">{SPLIT_KEYS.row.toLowerCase()}</span></dt><dd>split right</dd>
+          <dt><span class="kbd">{SPLIT_KEYS.column.toLowerCase()}</span></dt><dd>split down</dd>
+          <dt><span class="kbd">{modKey}+{isMac ? 'option' : 'alt'}+arrows</span></dt><dd>move between panes</dd>
           <dt><span class="kbd">{shellKey('c')} / v</span></dt><dd>copy / paste in terminal</dd>
           <dt><span class="kbd">{modKey}+shift+l</span></dt><dd>lock vault</dd>
           <dt><span class="kbd">{modKey}+click</span></dt><dd>open a link in the terminal</dd>

@@ -1,22 +1,30 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x'
   import Plus from '@lucide/svelte/icons/plus'
-  import { FOLDER_COLORS } from '@shared/defaults'
-  import { app, tabName, type MenuItem, type Tab } from '$lib/state.svelte'
+  import RadioTower from '@lucide/svelte/icons/radio-tower'
+  import type { SessionStatus } from '@shared/types'
+  import { app, tabName, type StripEntry, type Tab } from '$lib/state.svelte'
+  import { tabMenu } from '$lib/tab-menu.svelte'
   import { tint } from '$lib/folders'
   import { MOD } from '$lib/keys'
   import Logo from './Logo.svelte'
 
   let strip = $state<HTMLElement>()
 
+  const PROBLEMS: SessionStatus[] = ['error', 'closed', 'connecting']
+
   $effect(() => {
-    const id = app.active
+    const key = app.splitOf(app.active)?.id ?? app.active
     void app.tabs.length
-    strip?.querySelector(`[data-tab="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    strip?.querySelector(`[data-tab="${key}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   })
 
-  function onauxclick(e: MouseEvent, tab: Tab): void {
-    if (e.button === 1) app.closeTab(tab.id)
+  function closeEntry(entry: StripEntry): void {
+    app.closeTabs(entry.panes.map((t) => t.id))
+  }
+
+  function onauxclick(e: MouseEvent, entry: StripEntry): void {
+    if (e.button === 1) closeEntry(entry)
   }
 
   function onkeydown(e: KeyboardEvent, tab: Tab): void {
@@ -24,32 +32,17 @@
     else if (e.key === 'F2') void app.renameTab(tab.id)
   }
 
-  function tooltip(tab: Tab): string {
-    const name = tab.label ? `${tab.label} (${tab.title})` : tab.title
-    return tab.message ? `${name} — ${tab.message}` : name
+  function status(entry: StripEntry): SessionStatus {
+    return PROBLEMS.find((s) => entry.panes.some((t) => t.status === s)) ?? 'connected'
   }
 
-  function menu(e: MouseEvent, tab: Tab): void {
-    const target = $state.snapshot(tab.target)
-    const host = 'hostId' in target ? app.vault?.hosts.find((h) => h.id === target.hostId) : undefined
-    const name = host?.label || host?.address || tab.title
-    const open: MenuItem[] = []
-    if (tab.kind === 'ssh') {
-      const look = { label: tab.label, color: tab.color }
-      open.push({ label: 'Duplicate tab', action: () => app.openTab('ssh', target, tab.title, tab.command, look) })
-    }
-    if (tab.kind !== 'ssh' || tab.command) open.push({ label: 'Open terminal', action: () => app.openTab('ssh', target, name) })
-    if (tab.kind !== 'sftp') open.push({ label: 'Open SFTP', action: () => app.openTab('sftp', target, name) })
-    if (tab.kind !== 'docker') open.push({ label: 'Open Docker', action: () => app.openTab('docker', target, name) })
-    app.openMenu(e, [
-      ...open,
-      'sep',
-      { label: 'Rename tab', action: () => app.renameTab(tab.id) },
-      { swatches: FOLDER_COLORS, current: tab.color ?? null, pick: (color) => app.colorTab(tab.id, color) },
-      'sep',
-      { label: 'Close tab', action: () => app.closeTab(tab.id) },
-      { label: 'Close other tabs', action: () => app.closeOtherTabs(tab.id), disabled: app.tabs.length < 2 }
-    ])
+  function tooltip(entry: StripEntry): string {
+    return entry.panes
+      .map((tab) => {
+        const name = tab.label ? `${tab.label} (${tab.title})` : tab.title
+        return tab.message ? `${name} — ${tab.message}` : name
+      })
+      .join('\n')
   }
 </script>
 
@@ -59,33 +52,37 @@
     <button type="button" class={['tab', 'home', app.active === 'home' && 'active']} onclick={() => (app.active = 'home')}>
       vault
     </button>
-    {#each app.tabs as tab (tab.id)}
+    {#each app.strip as entry (entry.key)}
+      {@const tab = entry.tab}
+      {@const selected = entry.panes.some((t) => t.id === app.active)}
+      {@const worst = status(entry)}
       <div
-        class={['tab', app.active === tab.id && 'active', tab.color && 'colored']}
+        class={['tab', selected && 'active', tab.color && 'colored', entry.split && 'split']}
         style:--tab-color={tint(tab.color)}
-        data-tab={tab.id}
+        data-tab={entry.key}
         role="tab"
         tabindex="0"
-        aria-selected={app.active === tab.id}
-        title={tooltip(tab)}
+        aria-selected={selected}
+        title={tooltip(entry)}
         onclick={() => (app.active = tab.id)}
         ondblclick={() => app.renameTab(tab.id)}
         onkeydown={(e) => onkeydown(e, tab)}
-        onauxclick={(e) => onauxclick(e, tab)}
-        oncontextmenu={(e) => menu(e, tab)}
+        onauxclick={(e) => onauxclick(e, entry)}
+        oncontextmenu={(e) => app.openMenu(e, tabMenu(tab, 'strip'))}
       >
         <span class="kind">{tab.kind}</span>
-        {#if tab.status !== 'connected'}<span class={['dot', tab.status]} title={tab.status}></span>{/if}
-        <span class="title">{tabName(tab)}</span>
-        {#if tab.dirty}<span class="dirty" title="unsaved changes">*</span>{/if}
-        {#if tab.bell}<span class="bell" title="bell">!</span>{/if}
+        {#if worst !== 'connected'}<span class={['dot', worst]} title={worst}></span>{/if}
+        <span class="title">{entry.panes.map(tabName).join(' | ')}</span>
+        {#if entry.split?.broadcast}<span class="cast" title="Broadcasting input to all panes"><RadioTower size={13} /></span>{/if}
+        {#if entry.panes.some((t) => t.dirty)}<span class="dirty" title="unsaved changes">*</span>{/if}
+        {#if entry.panes.some((t) => t.bell)}<span class="bell" title="bell">!</span>{/if}
         <button
           type="button"
           class="close"
-          aria-label="Close tab"
+          aria-label={entry.split ? 'Close all panes' : 'Close tab'}
           onclick={(e) => {
             e.stopPropagation()
-            app.closeTab(tab.id)
+            closeEntry(entry)
           }}><X size={13} /></button
         >
       </div>
@@ -152,8 +149,15 @@
     border-bottom-color: var(--tab-color);
     background: color-mix(in oklch, var(--tab-color) 13%, transparent);
   }
+  .tab.split {
+    max-width: 320px;
+  }
   .home {
     padding-right: 14px;
+  }
+  .cast {
+    display: grid;
+    color: var(--warning);
   }
   .kind {
     flex: none;

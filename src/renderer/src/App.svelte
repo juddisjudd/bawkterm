@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { app } from '$lib/state.svelte'
-  import { mod, shellSafe } from '$lib/keys'
+  import { mod, PANE_ARROWS, shellSafe, splitKey } from '$lib/keys'
   import LockScreen from '$lib/components/LockScreen.svelte'
   import Shell from '$lib/components/Shell.svelte'
   import Modals from '$lib/components/Modals.svelte'
@@ -50,6 +50,16 @@
       e.preventDefault()
       e.stopPropagation()
       void app.lock()
+    } else if (splitKey(e)) {
+      const tab = app.tabs.find((t) => t.id === app.active)
+      if (!tab || tab.kind === 'edit') return
+      e.preventDefault()
+      e.stopPropagation()
+      app.splitTab(tab.id, splitKey(e)!)
+    } else if (mod(e) && e.altKey && !e.shiftKey && PANE_ARROWS[e.key]) {
+      if (!app.focusPane(PANE_ARROWS[e.key])) return
+      e.preventDefault()
+      e.stopPropagation()
     }
   }
 </script>

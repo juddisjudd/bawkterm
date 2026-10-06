@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS } from '@shared/defaults'
 import { appColors, findTerminalTheme, setImportedThemes } from './theme'
+import { insert, layout, leaves, mapPanes, neighbor, sibling, type Direction, type PaneDir, type PaneTree } from './panes'
 import type {
   EditInfo,
   ConnectTarget,
@@ -43,6 +44,28 @@ export interface Tab {
 
 export const tabName = (tab: Tab): string => tab.label || tab.title
 
+export interface Split {
+  id: string
+  root: PaneTree<string>
+  focus: string
+  broadcast: boolean
+}
+
+export interface Placement {
+  beside: string
+  dir: PaneDir
+}
+
+export interface StripEntry {
+  key: string
+  tab: Tab
+  panes: Tab[]
+  split?: Split
+}
+
+// keeps the saved tree within the depth that validation accepts
+const MAX_PANES = 16
+
 export interface Modal {
   id: string
   title: string
@@ -83,7 +106,23 @@ class AppState {
   settings = $state.raw<Settings>({ ...DEFAULT_SETTINGS })
   everUnlocked = $state(false)
   tabs = $state<Tab[]>([])
+  splits = $state<Split[]>([])
   #active = $state('home')
+  #splitOf = $derived(new Map(this.splits.flatMap((s) => leaves(s.root).map((id) => [id, s] as const))))
+  strip = $derived.by((): StripEntry[] => {
+    const entries: StripEntry[] = []
+    const seen = new Set<string>()
+    for (const tab of this.tabs) {
+      const split = this.splitOf(tab.id)
+      if (!split) entries.push({ key: tab.id, tab, panes: [tab] })
+      else if (!seen.has(split.id)) {
+        seen.add(split.id)
+        const panes = leaves(split.root).flatMap((id) => this.tabs.find((t) => t.id === id) ?? [])
+        entries.push({ key: split.id, tab: panes.find((t) => t.id === split.focus) ?? panes[0], panes, split })
+      }
+    }
+    return entries
+  })
   section = $state<Section>('hosts')
   settingsTab = $state<SettingsTab>('appearance')
   modals = $state<Modal[]>([])
@@ -91,6 +130,7 @@ class AppState {
   menu = $state<Menu | null>(null)
   paletteOpen = $state(false)
   paletteMode = $state<'all' | 'snippets'>('all')
+  palettePlace = $state<Placement | null>(null)
   editingHost = $state<string | null>(null)
   transfers = $state<TransferInfo[]>([])
   edits = $state<EditInfo[]>([])
@@ -119,7 +159,13 @@ class AppState {
 
   set active(id: string) {
     this.#active = id
+    const split = this.splitOf(id)
+    if (split && split.focus !== id) split.focus = id
     this.persistTabs()
+  }
+
+  splitOf(id: string): Split | undefined {
+    return this.#splitOf.get(id)
   }
 
   updateLocal(change: (local: LocalState) => void): void {
@@ -143,10 +189,14 @@ class AppState {
     if (path && this.vault?.local.lastPaths[key] !== path) this.updateLocal((l) => (l.lastPaths[key] = path))
   }
 
-  private persistTabs(): void {
+  persistTabs(): void {
     if (!this.vault?.settings.restoreTabs) return
     this.updateLocal((l) => {
       const kept = this.tabs.filter((t) => t.kind !== 'edit')
+      const index = new Map(kept.map((t, i) => [t.id, i]))
+      l.splits = this.splits
+        .map((s) => mapPanes(s.root, (id) => index.get(id)))
+        .filter((root): root is PaneTree<number> => !!root && !('tab' in root))
       l.tabs = kept.map((t) => ({
         kind: t.kind as SavedTab['kind'],
         target: $state.snapshot(t.target),
@@ -160,11 +210,17 @@ class AppState {
   }
 
   private restoreTabs(data: VaultData): void {
-    const saved = data.local.tabs.filter((t) => !('hostId' in t.target) || data.hosts.some((h) => 'hostId' in t.target && h.id === t.target.hostId))
-    if (!saved.length || this.tabs.length) return
-    for (const t of saved) {
+    if (this.tabs.length) return
+    const ids = data.local.tabs.map((t) =>
+      !('hostId' in t.target) || data.hosts.some((h) => 'hostId' in t.target && h.id === t.target.hostId)
+        ? crypto.randomUUID()
+        : undefined
+    )
+    data.local.tabs.forEach((t, i) => {
+      const id = ids[i]
+      if (!id) return
       this.tabs.push({
-        id: crypto.randomUUID(),
+        id,
         kind: t.kind,
         target: t.target,
         title: t.title,
@@ -173,9 +229,21 @@ class AppState {
         color: t.color,
         status: 'connecting'
       })
+    })
+    if (!this.tabs.length) return
+    const placed = new Set<string>()
+    for (const saved of data.local.splits) {
+      const root = mapPanes(saved, (i) => {
+        const id = ids[i]
+        if (!id || placed.has(id)) return null
+        placed.add(id)
+        return id
+      })
+      if (root && !('tab' in root)) this.splits.push({ id: crypto.randomUUID(), root, focus: leaves(root)[0], broadcast: false })
     }
-    const i = data.local.active
-    this.#active = i >= 0 && i < this.tabs.length ? this.tabs[i].id : 'home'
+    this.#active = ids[data.local.active] ?? 'home'
+    const split = this.splitOf(this.#active)
+    if (split) split.focus = this.#active
   }
 
   constructor() {
@@ -268,10 +336,86 @@ class AppState {
     await api.vault.lock()
   }
 
-  openTab(kind: TabKind, target: ConnectTarget, title: string, command?: string, look: Pick<Tab, 'label' | 'color'> = {}): void {
+  openTab(
+    kind: TabKind,
+    target: ConnectTarget,
+    title: string,
+    command?: string,
+    look: Pick<Tab, 'label' | 'color'> = {},
+    place: Placement | null = null
+  ): void {
     const tab: Tab = { id: crypto.randomUUID(), kind, target, title, status: 'connecting', command, ...look }
-    this.tabs.push(tab)
+    if (!place || !this.addPane(tab, place)) this.tabs.push(tab)
     this.active = tab.id
+  }
+
+  private addPane(tab: Tab, { beside, dir }: Placement): boolean {
+    if (!this.tabs.some((t) => t.id === beside)) return false
+    const split = this.splitOf(beside)
+    const members = new Set(split ? leaves(split.root) : [beside])
+    if (members.size >= MAX_PANES) {
+      this.toast(`A tab holds up to ${MAX_PANES} panes, so this opened in a new tab`)
+      return false
+    }
+    this.tabs.splice(this.tabs.findLastIndex((t) => members.has(t.id)) + 1, 0, tab)
+    if (split) split.root = insert($state.snapshot(split.root), beside, tab.id, dir)
+    else this.splits.push({ id: crypto.randomUUID(), root: insert({ tab: beside }, beside, tab.id, dir), focus: tab.id, broadcast: false })
+    return true
+  }
+
+  targetTitle(target: ConnectTarget, fallback: string): string {
+    const host = 'hostId' in target ? this.vault?.hosts.find((h) => h.id === target.hostId) : undefined
+    return host?.label || host?.address || fallback
+  }
+
+  splitTab(id: string, dir: PaneDir): void {
+    const tab = this.tabs.find((t) => t.id === id)
+    if (!tab || tab.kind === 'edit') return
+    const target = $state.snapshot(tab.target)
+    this.openTab(tab.kind, target, this.targetTitle(target, tab.title), undefined, {}, { beside: id, dir })
+  }
+
+  detachPane(id: string): void {
+    const split = this.splitOf(id)
+    if (!split) return
+    this.dropPane(split, id)
+    this.active = id
+  }
+
+  private dropPane(split: Split, id: string): void {
+    const root = mapPanes($state.snapshot(split.root), (t) => (t === id ? null : t))
+    if (!root || 'tab' in root) {
+      this.splits = this.splits.filter((s) => s.id !== split.id)
+      return
+    }
+    split.root = root
+    if (split.focus === id) split.focus = leaves(root)[0]
+  }
+
+  paneIds(id: string): string[] {
+    const split = this.splitOf(id)
+    return split ? leaves(split.root) : [id]
+  }
+
+  focusPane(toward: Direction): boolean {
+    const split = this.splitOf(this.active)
+    if (!split) return false
+    const next = neighbor(layout(split.root).panes, this.active, toward)
+    if (next) this.active = next
+    return true
+  }
+
+  toggleBroadcast(split: Split): void {
+    split.broadcast = !split.broadcast
+    if (split.broadcast) this.toast('Typing in one terminal of this tab now goes to all of them')
+  }
+
+  broadcastPeers(id: string): string[] {
+    const split = this.splitOf(id)
+    if (!split?.broadcast) return []
+    return leaves(split.root).filter(
+      (other) => other !== id && this.tabs.some((t) => t.id === other && t.kind === 'ssh' && t.status === 'connected')
+    )
   }
 
   async renameTab(id: string): Promise<void> {
@@ -316,11 +460,11 @@ class AppState {
     this.active = tab.id
   }
 
-  openHost(kind: TabKind, hostId: string): void {
+  openHost(kind: TabKind, hostId: string, place: Placement | null = null): void {
     const host = this.vault?.hosts.find((h) => h.id === hostId)
     if (!host) return
     if (host.kind === 'rdp') void this.launchRdp({ hostId }, host.label || host.address)
-    else this.openTab(kind, { hostId }, host.label || host.address)
+    else this.openTab(kind, { hostId }, host.label || host.address, undefined, {}, place)
   }
 
   async launchRdp(target: ConnectTarget, title: string): Promise<void> {
@@ -343,17 +487,25 @@ class AppState {
     else if (tab.kind === 'sftp' || tab.kind === 'edit') void api.sftp.close(id)
     else void api.docker.close(id)
     this.transfers = this.transfers.filter((t) => t.sessionId !== id)
-    if (this.active === id) this.active = this.tabs[Math.min(i, this.tabs.length - 1)]?.id ?? 'home'
+    const split = this.splitOf(id)
+    const next = split && sibling(split.root, id)
+    if (split) this.dropPane(split, id)
+    if (this.active === id) this.active = next || (this.tabs[Math.min(i, this.tabs.length - 1)]?.id ?? 'home')
     else this.persistTabs()
   }
 
+  closeTabs(ids: string[]): void {
+    for (const id of ids) this.closeTab(id)
+  }
+
   closeOtherTabs(keep: string): void {
-    for (const tab of [...this.tabs]) if (tab.id !== keep) this.closeTab(tab.id)
+    const group = new Set(this.paneIds(keep))
+    for (const tab of [...this.tabs]) if (!group.has(tab.id)) this.closeTab(tab.id)
     this.active = keep
   }
 
   cycleTab(step: number): void {
-    const ids = ['home', ...this.tabs.map((t) => t.id)]
+    const ids = ['home', ...this.strip.map((e) => e.tab.id)]
     const i = ids.indexOf(this.active)
     this.active = ids[(i + step + ids.length) % ids.length]
   }
@@ -446,8 +598,9 @@ class AppState {
     return text ? text : null
   }
 
-  openPalette(mode: 'all' | 'snippets' = 'all'): void {
+  openPalette(mode: 'all' | 'snippets' = 'all', place: Placement | null = null): void {
     this.paletteMode = mode
+    this.palettePlace = place
     this.paletteOpen = true
   }
 

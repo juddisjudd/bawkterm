@@ -46,6 +46,22 @@
     })
   }
 
+  function send(data: string): void {
+    if (live) window.api.ssh.write(tab.id, data)
+    for (const peer of app.broadcastPeers(tab.id)) window.api.ssh.write(peer, data)
+  }
+
+  // xterm only marks typed and pasted data as user input, so replies to terminal queries never reach other panes
+  function onUserInput(t: Terminal, listener: () => void): { dispose(): void } {
+    const core = (t as unknown as { _core?: { coreService?: { onUserInput?: (l: () => void) => { dispose(): void } } } })._core
+    return core?.coreService?.onUserInput?.(listener) ?? { dispose() {} }
+  }
+
+  function mouseOnTerminal(): boolean {
+    const e = window.event
+    return e instanceof MouseEvent && e.target instanceof Node && !!el?.contains(e.target)
+  }
+
   function connect(): void {
     if (!term) return
     app.updateTab({ sessionId: tab.id, status: 'connecting' })
@@ -186,8 +202,14 @@
       return true
     })
 
+    let typed = false
     const disposables = [
-      t.onData((data) => live && window.api.ssh.write(tab.id, data)),
+      onUserInput(t, () => (typed = !mouseOnTerminal())),
+      t.onData((data) => {
+        if (typed) send(data)
+        else if (live) window.api.ssh.write(tab.id, data)
+        typed = false
+      }),
       t.onResize(({ cols, rows }) => window.api.ssh.resize(tab.id, cols, rows)),
       t.onSelectionChange(() => {
         if (app.settings.copyOnSelect) copySelection()
@@ -203,7 +225,7 @@
       run: (text) => {
         if (!live) return
         t.paste(text)
-        window.api.ssh.write(tab.id, '\r')
+        t.input('\r')
         t.focus()
       }
     })
@@ -270,7 +292,7 @@
   })
 
   $effect(() => {
-    if (tab.status === 'connected' && active && !searchOpen && !app.modals.length && !app.paletteOpen) term?.focus()
+    if (tab.status === 'connected' && active && !searchOpen && !app.modals.length && !app.paletteOpen && !app.menu) term?.focus()
   })
 
   let lastStatus: string | undefined

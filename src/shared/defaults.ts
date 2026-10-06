@@ -73,7 +73,7 @@ export function blankHost(): Host {
 }
 
 export function emptyLocal(): LocalState {
-  return { tabs: [], active: -1, lastPaths: {} }
+  return { tabs: [], active: -1, splits: [], lastPaths: {} }
 }
 
 export function emptySync(): SyncState {

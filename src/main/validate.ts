@@ -12,6 +12,8 @@ import type {
   KeyImportRequest,
   KnownHost,
   LocalState,
+  PaneDir,
+  PaneTree,
   PasskeyEnrollment,
   PromptResponse,
   SavedTab,
@@ -235,6 +237,19 @@ export function cleanSettings(v: unknown): Partial<Settings> {
 }
 
 const TAB_KINDS = ['ssh', 'sftp', 'docker'] as const
+const PANE_DIRS: readonly PaneDir[] = ['row', 'column']
+
+function cleanPanes(v: unknown, depth = 0): PaneTree<number> {
+  const node = obj(v, 'pane')
+  if ('tab' in node) return { tab: int(node.tab, 'pane tab', 0, 99) }
+  if (depth >= 16) fail('panes')
+  return {
+    dir: oneOf(node.dir, 'pane direction', PANE_DIRS),
+    ratio: num(node.ratio, 'pane size', 0.05, 0.95),
+    a: cleanPanes(node.a, depth + 1),
+    b: cleanPanes(node.b, depth + 1)
+  }
+}
 
 export function cleanLocalState(v: unknown): LocalState {
   const s = obj(v, 'session')
@@ -251,6 +266,7 @@ export function cleanLocalState(v: unknown): LocalState {
       }
     }),
     active: int(s.active ?? -1, 'active tab', -1, 100),
+    splits: list(s.splits ?? [], 'splits', 50, (p) => cleanPanes(p)),
     lastPaths: record(s.lastPaths ?? {}, 'folders', 1000, (k) => line(k, 'folder key', 512), (p) => path(p))
   }
 }

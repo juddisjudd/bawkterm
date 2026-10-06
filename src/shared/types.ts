@@ -195,10 +195,16 @@ export interface SavedTab {
   color?: FolderColor
 }
 
+// row puts the panes side by side, column stacks them
+export type PaneDir = 'row' | 'column'
+
+export type PaneTree<T> = { tab: T } | { dir: PaneDir; ratio: number; a: PaneTree<T>; b: PaneTree<T> }
+
 // per device, never synced
 export interface LocalState {
   tabs: SavedTab[]
   active: number
+  splits: PaneTree<number>[]
   lastPaths: Record<string, string>
 }
 
