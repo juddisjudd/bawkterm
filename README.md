@@ -6,7 +6,7 @@
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)
 [![License](https://img.shields.io/github/license/juddisjudd/bawkterm?style=flat-square)](LICENSE)
 
-A desktop client for SSH, SFTP, Docker over SSH and Remote Desktop, on Windows, macOS and Linux. It keeps your hosts, passwords and keys in an encrypted vault, and can sync them between your devices, end-to-end encrypted, through [bawksync](https://github.com/juddisjudd/bawksync).
+A desktop client for SSH, SFTP, Docker over SSH and Remote Desktop, on Windows, macOS and Linux. It keeps your hosts, passwords and keys in an encrypted vault, and can sync them between your devices, end-to-end encrypted, through a shared folder (Dropbox, OneDrive, iCloud Drive, Syncthing) or [bawksync](https://github.com/juddisjudd/bawksync).
 
 Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled after [opencode.ai](https://opencode.ai).
 
@@ -25,7 +25,7 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 - **Remote Desktop hosts**: opens Windows Remote Desktop (or FreeRDP 3 on macOS and Linux) already signed in, optionally through an SSH jump host.
 - **Snippets**: saved commands you run from Ctrl+Shift+S (Cmd+Shift+S on macOS).
 - **Unlock options**: master password, plus optional Windows Hello, a passkey (phone, security key or this PC) or auto-unlock through Windows DPAPI, the macOS Keychain or the Linux keyring.
-- **Sync**: through a bawksync server you run yourself ([self-hosting guide](https://github.com/juddisjudd/bawksync/blob/main/docs/Home.md)). Everything is encrypted on your device first.
+- **Sync**: through a folder that Dropbox, OneDrive, iCloud Drive, Syncthing or a network share keeps the same on every device, with no server needed, or through a bawksync server you run yourself ([self-hosting guide](https://github.com/juddisjudd/bawksync/blob/main/docs/Home.md)). Everything is encrypted on your device first.
 
 | SFTP with favorites and folder colors | Built-in editor | Docker over SSH |
 | --- | --- | --- |
@@ -129,14 +129,15 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
 
 ### Sync
 
-- Each item is encrypted on your device with AES-256-GCM, and padded to whole KiB. The server stores an opaque record ID (an HMAC of the item ID), a timestamp and the ciphertext. It never sees names, addresses, usernames, passwords or keys.
+- Each item is encrypted on your device with AES-256-GCM, and padded to whole KiB. The server, or the sync folder, holds an opaque record ID (an HMAC of the item ID), a timestamp and the ciphertext. It never sees names, addresses, usernames, passwords or keys.
 - The server cannot read or forge items. What else a hostile server can and cannot do:
   - It cannot make you delete one: deletions are decided inside the encrypted data.
   - It cannot bring back a deleted item by replaying an old copy: devices remember deletions.
   - It can refuse service or lose data. Your devices keep their local copies.
 - Plain `http://` is only allowed to private IP addresses and `localhost`.
+- **Folder sync**: each device writes only its own file in the folder (`device-<id>.bawksync`), so the sync service never has two writers on one file and never makes conflicted copies. Devices merge all files item by item, and the newest copy wins. The folder never holds the key. Its link carries only the key, and each device picks its own copy of the folder. A file that is still downloading is skipped and read again on the next pass.
 - The sync link contains the server token and the encryption key. Anyone who has it can read your vault. Copying it asks for the master password, and it is cleared from the clipboard after a minute. Joining with a link warns you that everything on the device will be uploaded.
-- Anyone with the token can erase the server copy and start over with a new key ("Set up new sync" offers this when the server already holds data). Devices that still sync with the old key see an encrypted marker they cannot open, report that sync was reset, and upload nothing more.
+- Anyone with the token, or write access to the folder, can erase the synced copy and start over with a new key (setup offers this when the server or folder already holds data). Devices that still sync with the old key see an encrypted marker they cannot open, report that sync was reset, and upload nothing more.
 
 ### What bawkterm does not protect against
 

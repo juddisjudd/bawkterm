@@ -86,6 +86,11 @@ export interface BawkApi {
     // erase: remove what the server holds for this token first
     create(url: string, token: string, erase?: boolean): Promise<void>
     join(link: string): Promise<void>
+    // held: the folder already holds a synced vault
+    chooseFolder(): Promise<{ folder: string; held: boolean } | null>
+    // erase: remove the synced vault the chosen folder holds first
+    createFolder(erase?: boolean): Promise<void>
+    joinFolder(link: string): Promise<void>
     copyLink(password: string): Promise<void>
     now(): Promise<void>
     disconnect(): Promise<void>

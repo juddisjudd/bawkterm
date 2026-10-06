@@ -3,7 +3,7 @@ import { promises as fsp } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { SECRET_KEPT } from '@shared/defaults'
-import type { Host, Identity, IpcResult, SshKey, VaultData } from '@shared/types'
+import type { Host, Identity, IpcResult, SshKey, SyncConfig, VaultData } from '@shared/types'
 import { describeKey, generateKey } from './keys'
 import { localFs } from './local-fs'
 import { Prompter } from './prompts'
@@ -72,6 +72,8 @@ function saveFolder(): string {
 const redactHost = (h: Host): Host => ({ ...h, password: kept(h.password) })
 const redactIdentity = (i: Identity): Identity => ({ ...i, password: kept(i.password) })
 const redactKey = (k: SshKey): SshKey => ({ ...k, privateKey: SECRET_KEPT, passphrase: kept(k.passphrase) })
+const redactSync = (c: SyncConfig): SyncConfig =>
+  'kind' in c ? { ...c, key: SECRET_KEPT } : { url: c.url, token: SECRET_KEPT, key: SECRET_KEPT }
 
 export function redact(d: VaultData | null): VaultData | null {
   if (!d) return null
@@ -80,7 +82,7 @@ export function redact(d: VaultData | null): VaultData | null {
     hosts: d.hosts.map(redactHost),
     keys: d.keys.map(redactKey),
     identities: d.identities.map(redactIdentity),
-    sync: { ...d.sync, config: d.sync.config && { url: d.sync.config.url, token: SECRET_KEPT, key: SECRET_KEPT } }
+    sync: { ...d.sync, config: d.sync.config && redactSync(d.sync.config) }
   }
 }
 
@@ -303,6 +305,25 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
     sync.create(line(url, 'server address', 2048), line(token, 'token', 1024), erase === true)
   )
   handle('sync:join', (link) => sync.join(line(link, 'sync link', 8192)))
+  // the folder comes from this process's own dialog, so the window never hands it a path to write into
+  let chosenFolder: string | null = null
+  const chosen = (): string => {
+    if (!chosenFolder) throw new Error('Choose a folder first')
+    return chosenFolder
+  }
+  handle('sync:chooseFolder', async () => {
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Choose a folder that your sync service shares',
+      defaultPath: homedir(),
+      properties: ['openDirectory', 'createDirectory']
+    })
+    const folder = res.filePaths[0]
+    if (res.canceled || !folder) return null
+    chosenFolder = folder
+    return { folder, held: await sync.inspectFolder(folder) }
+  })
+  handle('sync:createFolder', (erase) => sync.createFolder(chosen(), erase === true))
+  handle('sync:joinFolder', (link) => sync.joinFolder(chosen(), line(link, 'sync link', 8192)))
   // the link is the server token plus the encryption key, so it goes straight to the clipboard and is wiped again
   handle('sync:copyLink', async (pw) => {
     await vault.verifyPassword(password(pw))

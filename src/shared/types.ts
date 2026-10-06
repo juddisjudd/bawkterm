@@ -78,15 +78,30 @@ export interface Snippet {
   updatedAt: number
 }
 
-export interface SyncConfig {
+export interface ServerSyncConfig {
   url: string
   token: string
   key: string
 }
 
+// a folder that Dropbox, OneDrive, iCloud Drive, Syncthing or a network share keeps the same on every device
+export interface FolderSyncConfig {
+  kind: 'folder'
+  folder: string
+  key: string
+  // names this device's own file in the folder, so no two devices ever write the same file
+  device: string
+}
+
+export type SyncConfig = ServerSyncConfig | FolderSyncConfig
+
 export interface SyncState {
   config: SyncConfig | null
   lastSeq: number
+  // per file in a sync folder: the size and time last read, so unchanged files are skipped
+  folderSeen?: Record<string, string>
+  // the stamp this device last wrote into its own file, to notice another computer writing as this device
+  folderWrote?: string
   synced: Record<string, number>
   // deletion times, so a replayed old copy of a deleted item is not brought back
   tombstones: Record<string, number>
