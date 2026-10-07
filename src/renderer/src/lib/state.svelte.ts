@@ -25,7 +25,7 @@ import type {
 } from '@shared/types'
 
 export type Section = 'hosts' | 'keychain' | 'snippets' | 'known' | 'settings'
-export type SettingsTab = 'appearance' | 'terminal' | 'connections' | 'files' | 'sync' | 'security' | 'updates' | 'shortcuts'
+export type SettingsTab = 'appearance' | 'terminal' | 'connections' | 'files' | 'sync' | 'security' | 'updates' | 'shortcuts' | 'donate'
 export type TabKind = 'ssh' | 'local' | 'sftp' | 'docker' | 'edit'
 
 export interface Tab {

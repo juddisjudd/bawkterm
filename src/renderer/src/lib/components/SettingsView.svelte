@@ -6,6 +6,7 @@
   import PageHeader from './PageHeader.svelte'
   import Checkbox from './Checkbox.svelte'
   import SyncSettings from './SyncSettings.svelte'
+  import DonateSettings from './DonateSettings.svelte'
   import { TERMINAL_THEMES, builtinThemeNamed, terminalTheme, themeFromPalette } from '$lib/theme'
   import { enrollPasskey } from '$lib/passkey'
   import Palette from '@lucide/svelte/icons/palette'
@@ -16,6 +17,7 @@
   import Lock from '@lucide/svelte/icons/lock'
   import CircleArrowDown from '@lucide/svelte/icons/circle-arrow-down'
   import Keyboard from '@lucide/svelte/icons/keyboard'
+  import Heart from '@lucide/svelte/icons/heart'
   import { MOD, SPLIT_KEYS, isMac, shellSafeLabel } from '$lib/keys'
   import { exportBackup, importFromFile, openExportMenu, openImportMenu } from '$lib/transfer'
 
@@ -33,7 +35,8 @@
     { id: 'sync', label: 'sync', icon: Cloud },
     { id: 'security', label: 'security', icon: Lock },
     { id: 'updates', label: 'updates', icon: CircleArrowDown },
-    { id: 'shortcuts', label: 'shortcuts', icon: Keyboard }
+    { id: 'shortcuts', label: 'shortcuts', icon: Keyboard },
+    { id: 'donate', label: 'donate', icon: Heart }
   ] satisfies { id: SettingsTab; label: string; icon: unknown }[]
   const current = $derived(tabs.find((t) => t.id === app.settingsTab) ?? tabs[0])
 
@@ -614,6 +617,9 @@
           <dt><span class="kbd">{modKey}+shift+l</span></dt><dd>lock vault</dd>
           <dt><span class="kbd">{modKey}+click</span></dt><dd>open a link in the terminal</dd>
         </dl>
+
+      {:else if current.id === 'donate'}
+        <DonateSettings />
       {/if}
     </div>
   </div>

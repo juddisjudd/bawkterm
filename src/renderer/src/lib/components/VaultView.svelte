@@ -9,6 +9,7 @@
   import CloudAlert from '@lucide/svelte/icons/cloud-alert'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import CircleArrowDown from '@lucide/svelte/icons/circle-arrow-down'
+  import Heart from '@lucide/svelte/icons/heart'
   import { app, type Section } from '$lib/state.svelte'
   import { ago } from '$lib/format'
   import HostsView from './HostsView.svelte'
@@ -84,6 +85,17 @@
           {/if}
         </button>
       {/if}
+      <button
+        type="button"
+        class="item"
+        onclick={() => {
+          app.settingsTab = 'donate'
+          app.section = 'settings'
+        }}
+      >
+        <Heart size={15} />
+        <span class="label">donate</span>
+      </button>
       <button type="button" class="item" onclick={() => app.lock()} title="Lock vault ({MOD}+Shift+L)">
         <Lock size={15} />
         <span class="label">lock</span>
