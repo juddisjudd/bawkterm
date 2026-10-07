@@ -62,9 +62,7 @@ mac:
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
-  # node-pty has no Linux prebuilds; bun install compiles it into build/Release
-  files:
-    - '!**/node_modules/node-pty/prebuilds/**'
+  # no files list here: the flatpak target reads this section's files as paths to copy into the bundle
   icon: build/icon.png
   appId: net.bawkbawk.bawkterm
   executableName: bawkterm

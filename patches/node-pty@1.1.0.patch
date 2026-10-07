@@ -13,10 +13,10 @@ index a358ffb177357e177661033c1b092f9c9d0e5f5a..ced57f0be5d805c95d5f4fdf1f07eee8
              var agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);
              agent.on('message', function (message) {
 diff --git a/scripts/post-install.js b/scripts/post-install.js
-index 8dbac507ea9c64169ea500a0115816056c0bc309..cf220eff2375a0d0fc2b23cef3b00444dfc6f84b 100644
+index 8dbac507ea9c64169ea500a0115816056c0bc309..bfc3a259486fec1908b23e948b3a9d225a1b8e01 100644
 --- a/scripts/post-install.js
 +++ b/scripts/post-install.js
-@@ -47,6 +47,12 @@ try {
+@@ -47,6 +47,15 @@ try {
    process.exit(1);
  }
  
@@ -25,6 +25,9 @@ index 8dbac507ea9c64169ea500a0115816056c0bc309..cf220eff2375a0d0fc2b23cef3b00444
 +  const helper = path.join(__dirname, '../prebuilds', `darwin-${arch}`, 'spawn-helper');
 +  if (fs.existsSync(helper)) fs.chmodSync(helper, 0o755);
 +}
++
++// Linux builds from source into build/Release, so the other platforms' prebuilds would only ship as dead weight
++if (os.platform() === 'linux') fs.rmSync(path.join(__dirname, '../prebuilds'), { recursive: true, force: true });
 +
  console.log(`\x1b[32m> Moving conpty.dll...\x1b[0m`);
  if (os.platform() !== 'win32') {
