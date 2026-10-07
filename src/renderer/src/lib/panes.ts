@@ -41,6 +41,18 @@ export function insert<T>(node: PaneTree<T>, beside: T, tab: T, dir: PaneDir): P
   return { dir: node.dir, ratio: node.ratio, a: insert(node.a, beside, tab, dir), b: insert(node.b, beside, tab, dir) }
 }
 
+// each split hands its first pane 1/n of what is left, so all n panes come out the same size
+function line<T>(nodes: PaneTree<T>[], dir: PaneDir): PaneTree<T> {
+  return nodes.length === 1 ? nodes[0] : { dir, ratio: 1 / nodes.length, a: nodes[0], b: line(nodes.slice(1), dir) }
+}
+
+export function grid<T>(tabs: T[]): PaneTree<T> {
+  const cols = Math.ceil(Math.sqrt(tabs.length))
+  const rows: PaneTree<T>[] = []
+  for (let i = 0; i < tabs.length; i += cols) rows.push(line(tabs.slice(i, i + cols).map((tab) => ({ tab })), 'row'))
+  return line(rows, 'column')
+}
+
 export function sibling<T>(node: PaneTree<T>, tab: T): T | undefined {
   if ('tab' in node) return undefined
   if ('tab' in node.a && node.a.tab === tab) return leaves(node.b)[0]

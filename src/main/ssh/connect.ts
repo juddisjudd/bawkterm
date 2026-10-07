@@ -12,7 +12,7 @@ import { hostKeyId } from '@shared/defaults'
 import type { ConnectTarget, PromptRequest, PromptResponse, SshKey } from '@shared/types'
 import { isEncryptedKeyError, parsePrivateKey, parsePublicBlob } from '../keys'
 import { isPpk, ppkToOpenSsh } from '../ppk'
-import { AllAgents, agentPaths } from './agent'
+import { AllAgents, ForwardedAgent, agentPaths } from './agent'
 import type { Vault } from '../vault'
 
 export type Ask = (req: Omit<PromptRequest, 'id' | 'sessionId'>) => Promise<PromptResponse | null>
@@ -40,6 +40,7 @@ interface Resolved {
   password: string
   key?: SshKey
   useAgent: boolean
+  agentForward: boolean
   jumpHostId: string
 }
 
@@ -66,7 +67,7 @@ function resolveTarget(target: ConnectTarget, vault: Vault): Resolved {
   const data = vault.get()
   if ('adhoc' in target) {
     const { address, port, username } = target.adhoc
-    return { label: address, address, port, username, password: '', useAgent: true, jumpHostId: '' }
+    return { label: address, address, port, username, password: '', useAgent: true, agentForward: false, jumpHostId: '' }
   }
   const host = data.hosts.find((h) => h.id === target.hostId)
   if (!host) throw new Error('Host not found in vault')
@@ -81,6 +82,7 @@ function resolveTarget(target: ConnectTarget, vault: Vault): Resolved {
     password: host.password || identity?.password || '',
     key: keyId ? data.keys.find((k) => k.id === keyId) : undefined,
     useAgent: host.useAgent,
+    agentForward: host.agentForward,
     jumpHostId: host.jumpHostId
   }
 }
@@ -203,6 +205,7 @@ interface AuthHooks {
   abort: (err: Error) => void
   pause: () => void
   resume: () => void
+  unlocked: (key: ParsedKey) => void
 }
 
 function makeAuthHandler(r: Resolved, ctx: ConnectContext, hooks: AuthHooks) {
@@ -245,7 +248,10 @@ function makeAuthHandler(r: Resolved, ctx: ConnectContext, hooks: AuthHooks) {
       tried.add('key')
       ctx.onProgress?.(`Trying key ${r.key.label}`)
       const key = await unlockKey(r, ctx)
-      if (key) return { type: 'publickey', username: r.username, key }
+      if (key) {
+        hooks.unlocked(key)
+        return { type: 'publickey', username: r.username, key }
+      }
     }
     const agents = r.useAgent ? agentPaths() : []
     if (agents.length && !tried.has('agent') && allowed(left, 'publickey')) {
@@ -358,6 +364,7 @@ function connectOne(r: Resolved, ctx: ConnectContext, sock?: Duplex): Promise<Cl
     client.on('close', () => fail(new Error(`Connection to ${r.address} closed during setup`)))
 
     const settings = ctx.vault.get().settings
+    const forwarded = r.agentForward ? new ForwardedAgent(agentPaths()) : undefined
     ctx.onProgress?.(`Connecting to ${r.address}:${r.port}`)
     arm()
     client.connect({
@@ -372,12 +379,16 @@ function connectOne(r: Resolved, ctx: ConnectContext, sock?: Duplex): Promise<Cl
       hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
         verifyHostKey(key, r, local).then(verify, () => verify(false))
       },
+      ...(forwarded ? { agent: forwarded, agentForward: true } : {}),
       authHandler: makeAuthHandler(r, local, {
         save: (password) => (pendingPassword = password),
         abort: fail,
         pause: disarm,
         resume: () => {
           if (!settled) arm()
+        },
+        unlocked: (key) => {
+          if (forwarded) forwarded.own = key
         }
       })
     })

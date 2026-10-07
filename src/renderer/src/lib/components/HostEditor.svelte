@@ -176,6 +176,10 @@
     </select>
   </label>
   <Checkbox bind:checked={host.useAgent} label="try keys from SSH agents (OpenSSH agent and Pageant, security keys included)" />
+  <Checkbox bind:checked={host.agentForward} label="forward my keys to this server (agent forwarding), for git or ssh from there" />
+  {#if host.agentForward}
+    <span class="hint">The server can then use this host's key and your agents' keys while you are connected. Its admins can too, so only turn this on for servers you trust.</span>
+  {/if}
   <label class="field">
     <span class="label">run after connect</span>
     <input class="input" bind:value={host.startupCommand} placeholder="tmux attach || tmux new" spellcheck="false" />

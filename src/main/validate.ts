@@ -101,6 +101,7 @@ export function cleanHost(v: unknown): Host {
     keyId: id(h.keyId ?? '', 'key'),
     identityId: id(h.identityId ?? '', 'identity'),
     useAgent: bool(h.useAgent ?? false, 'agent setting'),
+    agentForward: bool(h.agentForward ?? false, 'agent forwarding setting'),
     jumpHostId: id(h.jumpHostId ?? '', 'jump host'),
     tags: list(h.tags ?? [], 'tags', 64, (t) => line(t, 'tag', 64)),
     notes: text(h.notes ?? '', 'notes', 20_000),
@@ -218,6 +219,7 @@ export function cleanSettings(v: unknown): Partial<Settings> {
   set('editorCommand', (x) => line(x, 'editor', 1024))
   set('terminalTheme', (x) => line(x, 'terminal theme', 64))
   set('localShell', (x) => line(x, 'local shell', 256))
+  set('sessionLogFolder', (x) => line(x, 'log folder', 1024))
   set('customThemes', (x) => list(x, 'imported themes', 50, cleanTheme))
   for (const key of [
     'cursorBlink',
@@ -230,7 +232,9 @@ export function cleanSettings(v: unknown): Partial<Settings> {
     'bellNotify',
     'restoreTabs',
     'lockOnSystemLock',
-    'autoUpdate'
+    'autoUpdate',
+    'checkHosts',
+    'sessionLogs'
   ] as const) {
     set(key, (x) => bool(x, key))
   }

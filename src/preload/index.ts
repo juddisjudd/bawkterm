@@ -41,7 +41,8 @@ const api: BawkApi = {
   },
   hosts: {
     save: (host) => invoke('hosts:save', host),
-    remove: (id) => invoke('hosts:remove', id)
+    remove: (id) => invoke('hosts:remove', id),
+    probe: () => invoke('hosts:probe')
   },
   keys: {
     import: (req) => invoke('keys:import', req),
@@ -142,6 +143,9 @@ const api: BawkApi = {
   local: {
     home: () => invoke('local:home'),
     downloads: () => invoke('local:downloads'),
+    logFolder: () => invoke('logs:folder'),
+    chooseLogFolder: () => invoke('logs:choose'),
+    openLogFolder: () => invoke('logs:open'),
     pickFiles: () => invoke('local:pickFiles'),
     list: (path) => invoke('local:list', path),
     mkdir: (path) => invoke('local:mkdir', path),

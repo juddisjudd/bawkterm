@@ -3,7 +3,7 @@
   import Plus from '@lucide/svelte/icons/plus'
   import Pencil from '@lucide/svelte/icons/pencil'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
-  import type { AdhocTarget, Host } from '@shared/types'
+  import type { AdhocTarget, Host, HostReach } from '@shared/types'
   import { app, type MenuItem } from '$lib/state.svelte'
   import { ago } from '$lib/format'
   import { openExportMenu, openImportMenu } from '$lib/transfer'
@@ -15,6 +15,7 @@
   let quick = $state('')
   const QUICK_MODES = ['ssh', 'sftp', 'docker', 'rdp'] as const
   let quickMode = $state<(typeof QUICK_MODES)[number]>('ssh')
+  const REACH_EVERY_MS = 60_000
 
   const groups = $derived.by(() => {
     const q = query.trim().toLowerCase()
@@ -28,6 +29,26 @@
       .map(([name, list]) => ({ name, hosts: list.sort((a, b) => a.label.localeCompare(b.label)) }))
   })
 
+  let reach = $state.raw<Record<string, HostReach>>({})
+  const probeKey = $derived(vault.hosts.map((h) => `${h.id}:${h.address}:${h.port}:${h.jumpHostId}`).join(','))
+
+  // checks run only while this page is in front, and again each minute
+  $effect(() => {
+    void probeKey
+    if (!app.settings.checkHosts || app.active !== 'home') return
+    const run = (): void => {
+      if (document.hidden) return
+      window.api.hosts.probe().then((r) => (reach = r), () => {})
+    }
+    run()
+    const timer = setInterval(run, REACH_EVERY_MS)
+    return () => clearInterval(timer)
+  })
+
+  function reachTitle(r: HostReach): string {
+    return r.up ? `reachable · ${r.ms} ms` : `not reachable: ${r.reason}`
+  }
+
   function auth(h: Host): string[] {
     const identity = h.identityId ? vault.identities.find((i) => i.id === h.identityId) : undefined
     const out: string[] = []
@@ -35,6 +56,7 @@
     if (h.keyId) out.push('key')
     if (h.password) out.push('pw')
     if (h.useAgent && h.kind === 'ssh') out.push('agent')
+    if (h.agentForward && h.kind === 'ssh') out.push('fwd')
     if (h.jumpHostId) out.push('jump')
     return out
   }
@@ -73,6 +95,15 @@
   async function duplicate(h: Host): Promise<void> {
     const copy = { ...h, id: '', label: `${h.label} copy`, lastUsedAt: undefined, createdAt: Date.now() }
     await window.api.hosts.save(copy).catch((err) => app.fail(err))
+  }
+
+  function groupMenu(e: MouseEvent, hosts: Host[]): void {
+    const ids = hosts.filter((h) => h.kind === 'ssh').map((h) => h.id)
+    if (!ids.length) return
+    app.openMenu(e, [
+      { label: `Open all in tabs (${ids.length})`, action: () => app.openHosts(ids, false) },
+      { label: 'Open all as split panes in one tab', action: () => app.openHosts(ids, true), disabled: ids.length < 2 }
+    ])
   }
 
   function menu(e: MouseEvent, h: Host): void {
@@ -140,7 +171,14 @@
   {#each groups as group (group.name)}
     <section>
       {#if group.name || groups.length > 1}
-        <h3>{group.name || 'ungrouped'} <span class="muted">({group.hosts.length})</span></h3>
+        <h3 oncontextmenu={(e) => groupMenu(e, group.hosts)}>
+          <span>{group.name || 'ungrouped'} <span class="muted">({group.hosts.length})</span></span>
+          {#if group.hosts.some((h) => h.kind === 'ssh')}
+            <button type="button" class="btn small ghost" aria-haspopup="menu" onclick={(e) => groupMenu(e, group.hosts)}
+              >open all <ChevronDown /></button
+            >
+          {/if}
+        </h3>
       {/if}
       <ul>
         {#each group.hosts as h (h.id)}
@@ -150,7 +188,10 @@
             oncontextmenu={(e) => menu(e, h)}
           >
             <span class="marker">{h.kind === 'rdp' ? '[#]' : '[>]'}</span>
-            <span class="label">{h.label || h.address}</span>
+            <span class="label"
+              >{#if reach[h.id]}<span class={['dot', reach[h.id].up ? 'connected' : 'down']} title={reachTitle(reach[h.id])}
+                ></span>{:else if app.settings.checkHosts}<span class="dot unchecked"></span>{/if}{h.label || h.address}</span
+            >
             <span class="addr">{userAt(h)}</span>
             <span class="tags">
               {#if h.kind === 'rdp'}<span class="tag">rdp</span>{/if}
@@ -268,10 +309,21 @@
     margin-bottom: 24px;
   }
   h3 {
-    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 26px;
+    margin: 0 0 6px;
     color: var(--text-strong);
     font-size: 12px;
     font-weight: 500;
+  }
+  h3 .btn {
+    opacity: 0;
+  }
+  section:hover h3 .btn,
+  h3 .btn:focus-visible {
+    opacity: 1;
   }
   ul {
     margin: 0;
@@ -308,6 +360,17 @@
     font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .label .dot {
+    margin-right: 8px;
+    vertical-align: 1px;
+  }
+  .dot.down {
+    border: 1.5px solid var(--danger);
+    background: none;
+  }
+  .dot.unchecked {
+    visibility: hidden;
   }
   .addr {
     overflow: hidden;

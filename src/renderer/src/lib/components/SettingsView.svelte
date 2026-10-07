@@ -148,6 +148,17 @@
     window.api.app.editors().then((list) => (editors = list), () => {})
   })
 
+  let logFolder = $state('')
+  $effect(() => {
+    void s.sessionLogFolder
+    window.api.local.logFolder().then((folder) => (logFolder = folder), () => {})
+  })
+
+  async function chooseLogFolder(): Promise<void> {
+    const folder = await window.api.local.chooseLogFolder().catch((err) => app.fail(err))
+    if (folder) await set('sessionLogFolder', folder)
+  }
+
   async function browseEditor(): Promise<void> {
     const command = await window.api.app.pickEditor().catch((err) => app.fail(err))
     if (command) await set('editorCommand', command)
@@ -422,6 +433,20 @@
         <div class="checks">
           <Checkbox checked={s.bellNotify} label="notify when a background tab rings the bell" onchange={(v) => set('bellNotify', v)} />
         </div>
+        <h3>session logs</h3>
+        <div class="checks">
+          <Checkbox checked={s.sessionLogs} label="save what each terminal shows to a text file" onchange={(v) => set('sessionLogs', v)} />
+        </div>
+        {#if s.sessionLogs}
+          <div class="row">
+            <span class="selectable">{logFolder}</span>
+            <span class="buttons">
+              <button type="button" class="btn" onclick={chooseLogFolder}>Change…</button>
+              <button type="button" class="btn" onclick={() => window.api.local.openLogFolder().catch((err) => app.fail(err))}>Open</button>
+            </span>
+          </div>
+          <p class="hint">One file per connection, starting with the next one. Logs are plain text outside the vault, so anything a server prints ends up in them.</p>
+        {/if}
 
       {:else if current.id === 'connections'}
         <label class="row">
@@ -432,6 +457,7 @@
         <div class="checks">
           <Checkbox checked={s.autoReconnect} label="reconnect automatically when a connection drops" onchange={(v) => set('autoReconnect', v)} />
           <Checkbox checked={s.restoreTabs} label="reopen my tabs when bawkterm starts" onchange={(v) => set('restoreTabs', v)} />
+          <Checkbox checked={s.checkHosts} label="show which hosts answer (checks their port each minute while the host list is open)" onchange={(v) => set('checkHosts', v)} />
         </div>
         <h3>import and export</h3>
         <div class="row">
@@ -672,6 +698,11 @@
   }
   .note {
     margin-top: 8px;
+  }
+  .buttons {
+    display: flex;
+    flex: none;
+    gap: 6px;
   }
   .indent {
     padding-left: 32px;

@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from '@shared/defaults'
 import { appColors, findTerminalTheme, setImportedThemes } from './theme'
-import { insert, layout, leaves, mapPanes, neighbor, sibling, type Direction, type PaneDir, type PaneTree } from './panes'
+import { grid, insert, layout, leaves, mapPanes, neighbor, sibling, type Direction, type PaneDir, type PaneTree } from './panes'
 import type {
   EditInfo,
   ConnectTarget,
@@ -514,6 +514,25 @@ class AppState {
     if (!host) return
     if (host.kind === 'rdp') void this.launchRdp({ hostId }, host.label || host.address)
     else this.openTab(kind, { hostId }, host.label || host.address, undefined, {}, place)
+  }
+
+  openHosts(hostIds: string[], tiled: boolean): void {
+    const hosts = hostIds.flatMap((id) => this.vault?.hosts.find((h) => h.id === id && h.kind === 'ssh') ?? [])
+    if (!tiled || hosts.length < 2) {
+      for (const h of hosts) this.openHost('ssh', h.id)
+      return
+    }
+    const tabs: Tab[] = hosts.slice(0, MAX_PANES).map((h) => ({
+      id: crypto.randomUUID(),
+      kind: 'ssh',
+      target: { hostId: h.id },
+      title: h.label || h.address,
+      status: 'connecting'
+    }))
+    this.tabs.push(...tabs)
+    this.splits.push({ id: crypto.randomUUID(), root: grid(tabs.map((t) => t.id)), focus: tabs[0].id, broadcast: false })
+    this.active = tabs[0].id
+    if (hosts.length > MAX_PANES) this.toast(`A tab holds up to ${MAX_PANES} panes, so only the first ${MAX_PANES} hosts opened`)
   }
 
   async launchRdp(target: ConnectTarget, title: string): Promise<void> {

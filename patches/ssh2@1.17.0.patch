@@ -1,5 +1,5 @@
 diff --git a/lib/agent.js b/lib/agent.js
-index bb495d1b191433c1be51929bb551bba1a8b03c1f..a8d209605943d5bcda610fff078ccaa26e3d248b 100644
+index bb495d1b191433c1be51929bb551bba1a8b03c1f..d7a96bc2b2efc53cca1aecd924fda859a76b8452 100644
 --- a/lib/agent.js
 +++ b/lib/agent.js
 @@ -165,7 +165,9 @@ const PageantAgent = (() => {
@@ -13,7 +13,16 @@ index bb495d1b191433c1be51929bb551bba1a8b03c1f..a8d209605943d5bcda610fff078ccaa2
    const ERROR = {
      [RET_ERR_BADARGS]: new Error('Invalid pagent.exe arguments'),
      [RET_ERR_UNAVAILABLE]: new Error('Pageant is not running'),
-@@ -655,13 +657,20 @@ const AgentProtocol = (() => {
+@@ -564,6 +566,8 @@ const AgentProtocol = (() => {
+         if (bufferLen < (4 + this[SYM_MSGLEN]))
+           break;
+ 
++        // a message this side does not understand is still skipped whole, not read as the next one
++        const msgEnd = p + 4 + this[SYM_MSGLEN];
+         const msgType = buffer[p += 4];
+         ++p;
+ 
+@@ -655,13 +659,20 @@ const AgentProtocol = (() => {
                // TODO: verify signature type based on key and options used
                // during initial sign request
                binaryParser.init(signature, 0);
@@ -37,6 +46,45 @@ index bb495d1b191433c1be51929bb551bba1a8b03c1f..a8d209605943d5bcda610fff078ccaa2
                req.cb(null, signature);
                break;
              }
+@@ -738,6 +749,7 @@ const AgentProtocol = (() => {
+         }
+ 
+         // Get ready for next message
++        p = msgEnd;
+         this[SYM_MSGLEN] = -1;
+         if (p === bufferLen) {
+           // Nothing left to process for now
+@@ -992,19 +1004,26 @@ const AgentProtocol = (() => {
+       let p = 0;
+       const sigFormat = req.getContext();
+       const sigFormatLen = Buffer.byteLength(sigFormat);
++      // security key signatures come framed with their flags and counter, so they go out as they are
++      const framed = sigFormat.startsWith('sk-');
++      const blobLen = (framed ? 0 : 4) + signature.length;
+       const buf = Buffer.allocUnsafe(
+-        4 + 1 + 4 + 4 + sigFormatLen + 4 + signature.length
++        4 + 1 + 4 + 4 + sigFormatLen + blobLen
+       );
+ 
+       writeUInt32BE(buf, buf.length - 4, p);
+ 
+       buf[p += 4] = SSH_AGENT_SIGN_RESPONSE;
+ 
+-      writeUInt32BE(buf, 4 + sigFormatLen + 4 + signature.length, ++p);
++      writeUInt32BE(buf, 4 + sigFormatLen + blobLen, ++p);
+       writeUInt32BE(buf, sigFormatLen, p += 4);
+       buf.utf8Write(sigFormat, p += 4, sigFormatLen);
+-      writeUInt32BE(buf, signature.length, p += sigFormatLen);
+-      signature.copy(buf, p += 4);
++      p += sigFormatLen;
++      if (!framed) {
++        writeUInt32BE(buf, signature.length, p);
++        p += 4;
++      }
++      signature.copy(buf, p);
+ 
+       return respond(this, req, buf);
+     }
 diff --git a/lib/protocol/Protocol.js b/lib/protocol/Protocol.js
 index 7302488102161b5b627f6f089d502caa6df0f356..b769871b35070c43661c18024e72016f3090919e 100644
 --- a/lib/protocol/Protocol.js

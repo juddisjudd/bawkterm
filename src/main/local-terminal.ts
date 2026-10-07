@@ -5,6 +5,7 @@ import { basename, join } from 'node:path'
 import type { IPty } from 'node-pty'
 import type { LocalShell, SessionEvent } from '@shared/types'
 import type { Send } from './prompts'
+import type { SessionLogs } from './session-log'
 import { findProgram, POWERSHELL, system32 } from './system'
 
 const HIGH_WATER = 1024 * 1024
@@ -101,7 +102,10 @@ export class LocalTerminals {
   private running = new Set<Promise<void>>()
   private detected?: Promise<Shell[]>
 
-  constructor(private send: Send) {}
+  constructor(
+    private send: Send,
+    private logs: SessionLogs
+  ) {}
 
   private shells(): Promise<Shell[]> {
     this.detected ??= detect().catch((err) => {
@@ -150,9 +154,11 @@ export class LocalTerminals {
     this.running.add(exited)
     void exited.then(() => this.running.delete(exited))
     this.status(sessionId, 'connected')
+    this.logs.open(sessionId, `${shell.name} (local)`)
   }
 
   private push(session: Session, chunk: Buffer): void {
+    this.logs.write(session.id, chunk)
     session.queue.push(chunk)
     session.unacked += chunk.length
     if (!session.paused && session.unacked > HIGH_WATER) {
@@ -173,6 +179,7 @@ export class LocalTerminals {
   private finish(session: Session, message: string): void {
     if (session.closed) return
     session.closed = true
+    this.logs.close(session.id)
     this.sessions.delete(session.id)
     this.status(session.id, 'closed', message)
   }

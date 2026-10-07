@@ -28,6 +28,7 @@ export interface Host {
   keyId: string
   identityId: string
   useAgent: boolean
+  agentForward: boolean
   jumpHostId: string
   tags: string[]
   notes: string
@@ -38,6 +39,12 @@ export interface Host {
   bookmarks: string[]
   folderColors: Record<string, FolderColor>
   lastUsedAt?: number
+}
+
+export interface HostReach {
+  up: boolean
+  ms?: number
+  reason?: string
 }
 
 export interface SshKey {
@@ -189,6 +196,10 @@ export interface Settings {
   lockOnSystemLock: boolean
   autoUpdate: boolean
   customThemes: CustomTheme[]
+  checkHosts: boolean
+  sessionLogs: boolean
+  // empty: a "bawkterm logs" folder in Documents
+  sessionLogFolder: string
 }
 
 export interface VaultData {

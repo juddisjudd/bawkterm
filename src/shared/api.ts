@@ -11,6 +11,7 @@ import type {
   FileEntry,
   Host,
   HostExportFormat,
+  HostReach,
   Identity,
   ImportSource,
   ImportSourceId,
@@ -65,6 +66,8 @@ export interface BawkApi {
   hosts: {
     save(host: Host): Promise<Host>
     remove(id: string): Promise<void>
+    // whether each saved host's port answers; hosts behind a jump host are left out
+    probe(): Promise<Record<string, HostReach>>
   }
   keys: {
     import(req: KeyImportRequest): Promise<SshKey>
@@ -176,6 +179,9 @@ export interface BawkApi {
   local: {
     home(): Promise<string>
     downloads(): Promise<string>
+    logFolder(): Promise<string>
+    chooseLogFolder(): Promise<string | null>
+    openLogFolder(): Promise<void>
     pickFiles(): Promise<string[]>
     list(path: string): Promise<FileEntry[]>
     mkdir(path: string): Promise<void>

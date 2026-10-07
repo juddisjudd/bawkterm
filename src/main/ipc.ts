@@ -8,6 +8,8 @@ import { describeKey, generateKey } from './keys'
 import { localFs } from './local-fs'
 import { LocalTerminals } from './local-terminal'
 import { Prompter } from './prompts'
+import { probeHosts } from './reach'
+import { logFolder, SessionLogs } from './session-log'
 import { writeBackup } from './backup'
 import { writeFileAtomic } from './files'
 import { findSources, importFile, importSource, IMPORT_SOURCES } from './import'
@@ -114,8 +116,9 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   }
 
   const prompter = new Prompter(send)
-  const terminals = new Terminals(vault, prompter, send)
-  const local = new LocalTerminals(send)
+  const logs = new SessionLogs(vault)
+  const terminals = new Terminals(vault, prompter, send, logs)
+  const local = new LocalTerminals(send, logs)
   const sftp = new SftpSessions(vault, prompter, send)
   const docker = new DockerSessions(vault, prompter, send)
   const rdp = new RdpLauncher(vault, prompter)
@@ -216,6 +219,7 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
       touch(d.hosts, (h) => h.jumpHostId === key, (h) => (h.jumpHostId = ''))
     })
   })
+  handle('hosts:probe', () => probeHosts(vault.get().hosts))
 
   const addKey = (fields: Omit<SshKey, 'id' | 'createdAt' | 'updatedAt'>): Promise<SshKey> =>
     vault.mutate((d) => {
@@ -467,6 +471,21 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
 
   handle('local:home', () => localFs.home())
   handle('local:downloads', () => saveFolder())
+  handle('logs:folder', () => logFolder(vault))
+  handle('logs:choose', async () => {
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Save session logs in',
+      defaultPath: logFolder(vault),
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return res.canceled ? null : (res.filePaths[0] ?? null)
+  })
+  handle('logs:open', async () => {
+    const folder = logFolder(vault)
+    await fsp.mkdir(folder, { recursive: true })
+    const error = await shell.openPath(folder)
+    if (error) throw new Error(error)
+  })
   handle('local:pickFiles', async () => {
     const res = await dialog.showOpenDialog(win, { title: 'Upload files', properties: ['openFile', 'multiSelections'] })
     return res.canceled ? [] : res.filePaths

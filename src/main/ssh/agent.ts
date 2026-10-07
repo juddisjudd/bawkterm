@@ -1,12 +1,15 @@
 import { existsSync } from 'node:fs'
 import {
+  AgentProtocol,
   BaseAgent,
   createAgent,
+  type GetStreamCallback,
   type IdentityCallback,
   type ParsedKey,
   type SignCallback,
   type SigningRequestOptions
 } from 'ssh2'
+import { convertSignature } from 'ssh2/lib/protocol/utils.js'
 
 const OPENSSH_AGENT_PIPE = '\\\\.\\pipe\\openssh-ssh-agent'
 const ANSWER_TIMEOUT = 5_000
@@ -77,5 +80,52 @@ export class AllAgents extends BaseAgent<ParsedKey> {
       this.hooks.signed()
       done(err, signature)
     })
+  }
+}
+
+const keyId = (key: ParsedKey): string => key.getPublicSSH().toString('base64')
+
+// what a server reaches through agent forwarding: the key this host logged in with, plus the local agents' keys
+export class ForwardedAgent extends BaseAgent<ParsedKey> {
+  own: ParsedKey | null = null
+  private agents: AllAgents | null
+
+  constructor(paths: string[]) {
+    super()
+    this.agents = paths.length ? new AllAgents(paths, { signing: () => {}, signed: () => {} }) : null
+  }
+
+  getIdentities(cb: IdentityCallback<ParsedKey>): void {
+    const own = this.own ? [this.own] : []
+    if (!this.agents) return cb(null, own)
+    this.agents.getIdentities((err, keys) => {
+      const ownId = this.own && keyId(this.own)
+      cb(null, [...own, ...(err ? [] : ((keys ?? []) as ParsedKey[]).filter((k) => keyId(k) !== ownId))])
+    })
+  }
+
+  sign(pubKey: ParsedKey, data: Buffer, options: SigningRequestOptions, cb?: SignCallback): void
+  sign(pubKey: ParsedKey, data: Buffer, cb: SignCallback): void
+  sign(pubKey: ParsedKey, data: Buffer, options: SigningRequestOptions | SignCallback, cb?: SignCallback): void {
+    const done = typeof options === 'function' ? options : (cb ?? (() => {}))
+    const opts = typeof options === 'function' ? {} : options
+    if (this.own && keyId(pubKey) === keyId(this.own)) {
+      const raw: Buffer | Error = this.own.sign(data, opts.hash)
+      const signature = raw instanceof Error ? false : convertSignature(raw, this.own.type)
+      return signature ? done(null, signature) : done(new Error('Could not sign with this key'))
+    }
+    if (!this.agents) return done(new Error('No key for this request'))
+    this.agents.sign(pubKey, data, opts, done)
+  }
+
+  getStream(cb: GetStreamCallback): void {
+    const protocol = new AgentProtocol(false)
+    protocol.on('identities', (req) =>
+      this.getIdentities((err, keys) => (err ? protocol.failureReply(req) : protocol.getIdentitiesReply(req, (keys ?? []) as ParsedKey[])))
+    )
+    protocol.on('sign', (req, pubKey, data, options) =>
+      this.sign(pubKey, data, options, (err, signature) => (err || !signature ? protocol.failureReply(req) : protocol.signReply(req, signature)))
+    )
+    cb(null, protocol)
   }
 }

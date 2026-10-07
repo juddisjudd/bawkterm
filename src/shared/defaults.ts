@@ -23,7 +23,10 @@ export const DEFAULT_SETTINGS: Settings = {
   restoreTabs: true,
   lockOnSystemLock: true,
   autoUpdate: true,
-  customThemes: []
+  customThemes: [],
+  checkHosts: true,
+  sessionLogs: false,
+  sessionLogFolder: ''
 }
 
 export function emptyVault(): VaultData {
@@ -61,6 +64,7 @@ export function blankHost(): Host {
     keyId: '',
     identityId: '',
     useAgent: false,
+    agentForward: false,
     jumpHostId: '',
     tags: [],
     notes: '',

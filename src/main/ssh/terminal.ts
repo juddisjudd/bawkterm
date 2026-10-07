@@ -1,6 +1,7 @@
 import type { ClientChannel } from 'ssh2'
 import type { ConnectTarget, SessionEvent } from '@shared/types'
 import type { Prompter, Send } from '../prompts'
+import type { SessionLogs } from '../session-log'
 import type { Vault } from '../vault'
 import { CancelledError, closeConnection, connect, type Connection } from './connect'
 
@@ -27,7 +28,8 @@ export class Terminals {
   constructor(
     private vault: Vault,
     private prompter: Prompter,
-    private send: Send
+    private send: Send,
+    private logs: SessionLogs
   ) {}
 
   private status(sessionId: string, status: SessionEvent['status'], message?: string, dropped?: boolean): void {
@@ -89,12 +91,14 @@ export class Terminals {
     conn.client.on('close', () => this.finish(session, 'Connection closed'))
     conn.client.on('error', (err) => this.finish(session, err.message))
     this.status(sessionId, 'connected')
+    this.logs.open(sessionId, conn.label)
 
     const startup = !command && 'hostId' in target ? this.vault.get().hosts.find((h) => h.id === target.hostId)?.startupCommand : ''
     if (startup?.trim()) stream.write(startup.trim().replace(/\r?\n/g, '\r') + '\r')
   }
 
   private push(session: Session, chunk: Buffer): void {
+    this.logs.write(session.id, chunk)
     session.queue.push(chunk)
     session.unacked += chunk.length
     if (!session.paused && session.unacked > HIGH_WATER) {
@@ -115,6 +119,7 @@ export class Terminals {
   private finish(session: Session, message: string): void {
     if (session.closed) return
     session.closed = true
+    this.logs.close(session.id)
     this.sessions.delete(session.id)
     if (session.conn) closeConnection(session.conn)
     const dropped = !session.exited && !session.userClosed
