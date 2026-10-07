@@ -3,7 +3,7 @@
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import Search from '@lucide/svelte/icons/search'
   import type { ContainerInfo, ContainerStats, DockerAction, DockerCommand } from '@shared/types'
-  import { app, type Tab } from '$lib/state.svelte'
+  import { app, serverTarget, type Tab } from '$lib/state.svelte'
   import { Reconnector } from '$lib/reconnect.svelte'
 
   let { tab, active }: { tab: Tab; active: boolean } = $props()
@@ -65,7 +65,7 @@
   async function connect(): Promise<void> {
     app.updateTab({ sessionId: tab.id, status: 'connecting' })
     try {
-      const res = await api.docker.open(tab.id, $state.snapshot(tab.target))
+      const res = await api.docker.open(tab.id, serverTarget(tab))
       version = res.version
       await refresh()
     } catch {

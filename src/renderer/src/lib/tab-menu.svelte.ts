@@ -1,5 +1,5 @@
 import { FOLDER_COLORS } from '@shared/defaults'
-import { app, type MenuItem, type Tab } from './state.svelte'
+import { app, isTerminal, type MenuItem, type Tab } from './state.svelte'
 
 export function tabMenu(tab: Tab, where: 'strip' | 'pane'): MenuItem[] {
   const target = $state.snapshot(tab.target)
@@ -7,23 +7,26 @@ export function tabMenu(tab: Tab, where: 'strip' | 'pane'): MenuItem[] {
   const split = app.splitOf(tab.id)
   const panes = app.paneIds(tab.id)
   const items: MenuItem[] = []
-  if (tab.kind === 'ssh') {
+  if (isTerminal(tab)) {
     const look = { label: tab.label, color: tab.color }
-    items.push({ label: 'Duplicate tab', action: () => app.openTab('ssh', target, tab.title, tab.command, look) })
+    items.push({ label: 'Duplicate tab', action: () => app.openTab(tab.kind, target, tab.title, tab.command, look) })
   }
-  if (tab.kind !== 'ssh' || tab.command) items.push({ label: 'Open terminal', action: () => app.openTab('ssh', target, name) })
-  if (tab.kind !== 'sftp') items.push({ label: 'Open SFTP', action: () => app.openTab('sftp', target, name) })
-  if (tab.kind !== 'docker') items.push({ label: 'Open Docker', action: () => app.openTab('docker', target, name) })
+  if (tab.kind === 'ssh') items.push({ label: tab.files ? 'Hide files' : 'Show files', action: () => app.toggleFiles(tab.id) })
+  if (!('local' in target)) {
+    if (tab.kind !== 'ssh' || tab.command) items.push({ label: 'Open terminal', action: () => app.openTab('ssh', target, name) })
+    if (tab.kind !== 'sftp') items.push({ label: 'Open SFTP', action: () => app.openTab('sftp', target, name) })
+    if (tab.kind !== 'docker') items.push({ label: 'Open Docker', action: () => app.openTab('docker', target, name) })
+  }
   items.push('sep')
   if (tab.kind !== 'edit') {
     items.push(
       { label: 'Split right', action: () => app.splitTab(tab.id, 'row') },
       { label: 'Split down', action: () => app.splitTab(tab.id, 'column') },
-      { label: 'Split with host…', action: () => app.openPalette('all', { beside: tab.id, dir: 'row' }) }
+      { label: 'Split with…', action: () => app.openPalette('all', { beside: tab.id, dir: 'row' }) }
     )
   }
   if (split) {
-    const terminals = app.tabs.filter((t) => t.kind === 'ssh' && panes.includes(t.id)).length
+    const terminals = app.tabs.filter((t) => isTerminal(t) && panes.includes(t.id)).length
     if (terminals > 1) {
       items.push({
         label: split.broadcast ? 'Stop broadcasting input' : 'Broadcast input to all panes',

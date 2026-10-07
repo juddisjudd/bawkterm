@@ -398,6 +398,15 @@
 
       {:else if current.id === 'terminal'}
         <label class="row">
+          <span>local shell ({shellKey('t')})</span>
+          <select class="select wide" value={s.localShell} onchange={(e) => set('localShell', e.currentTarget.value)}>
+            <option value="">{app.shells[0] ? `first found (${app.shells[0].name})` : 'first found'}</option>
+            {#each app.shells as shell (shell.id)}
+              <option value={shell.id}>{shell.name}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="row">
           <span>scrollback lines</span>
           <input class="input narrow" type="number" min="500" max="200000" step="500" value={s.scrollback}
             onchange={(e) => { const n = num(e, 500, 200000); if (n) set('scrollback', n) }} />
@@ -570,6 +579,8 @@
           <dt><span class="kbd">{modKey}+= / - / 0</span></dt><dd>zoom terminal text in, out, reset</dd>
           <dt><span class="kbd">ctrl+tab</span></dt><dd>next tab</dd>
           <dt><span class="kbd">{shellKey('w')}</span></dt><dd>close tab or pane</dd>
+          <dt><span class="kbd">{shellKey('t')}</span></dt><dd>new local terminal</dd>
+          <dt><span class="kbd">{shellKey('b')}</span></dt><dd>show or hide files beside an SSH terminal</dd>
           <dt><span class="kbd">{SPLIT_KEYS.row.toLowerCase()}</span></dt><dd>split right</dd>
           <dt><span class="kbd">{SPLIT_KEYS.column.toLowerCase()}</span></dt><dd>split down</dd>
           <dt><span class="kbd">{modKey}+{isMac ? 'option' : 'alt'}+arrows</span></dt><dd>move between panes</dd>

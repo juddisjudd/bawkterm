@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AdhocTarget, Host, Snippet } from '@shared/types'
+  import type { AdhocTarget, Host, LocalShell, Snippet } from '@shared/types'
   import { app, type Section } from '$lib/state.svelte'
   import { focusOnMount } from '$lib/focus'
   import { terminalFor } from '$lib/sessions'
@@ -9,6 +9,7 @@
 
   type Item =
     | { kind: 'host'; host: Host }
+    | { kind: 'shell'; shell: LocalShell }
     | { kind: 'folder'; host: Host; path: string }
     | { kind: 'adhoc'; target: AdhocTarget }
     | { kind: 'snippet'; snippet: Snippet }
@@ -75,18 +76,22 @@
               [f.path, f.host.label, f.host.address].some((v) => v.toLowerCase().includes(q))
           )
           .slice(0, 8)
+    const shells = app.shells
+      .filter((s) => !q || s.name.toLowerCase().includes(q) || 'local terminal shell'.includes(q))
+      .map((shell): Item => ({ kind: 'shell', shell }))
     const adhoc = parseTarget(query)
     const cmds = commands.filter((c) => c.kind === 'command' && q && c.label.includes(q))
     const lead = adhoc ? [{ kind: 'adhoc', target: adhoc } as Item] : []
     return terminalTab && q
-      ? [...lead, ...snippets, ...hosts, ...folders, ...cmds]
-      : [...lead, ...hosts, ...folders, ...snippets, ...cmds]
+      ? [...lead, ...snippets, ...hosts, ...shells, ...folders, ...cmds]
+      : [...lead, ...hosts, ...shells, ...folders, ...snippets, ...cmds]
   })
 
   const current = $derived(items[index])
 
   function keyOf(item: Item): string {
     if (item.kind === 'host') return item.host.id
+    if (item.kind === 'shell') return `shell:${item.shell.id}`
     if (item.kind === 'folder') return `${item.host.id}:${item.path}`
     if (item.kind === 'snippet') return item.snippet.id
     return item.kind === 'adhoc' ? 'adhoc' : item.label
@@ -106,6 +111,10 @@
       return
     }
     const place = app.palettePlace
+    if (item.kind === 'shell') {
+      app.openLocal(item.shell.id, place)
+      return
+    }
     if (item.kind === 'folder') {
       app.rememberPath(item.host.id, item.path)
       app.openHost('sftp', item.host.id, place)
@@ -167,6 +176,9 @@
               <span class="meta"
                 >{item.host.kind === 'rdp' ? 'rdp · ' : ''}{item.host.username ? `${item.host.username}@` : ''}{item.host.address}</span
               >
+            {:else if item.kind === 'shell'}
+              <span class="name"><span class="dollar">&gt;_</span> {item.shell.name}</span>
+              <span class="meta">local terminal</span>
             {:else if item.kind === 'folder'}
               <span class="name folder" style:--tint={tint(item.host.folderColors[item.path])}
                 ><Folder size={13} class="icon" /> {item.path.split('/').filter(Boolean).at(-1) ?? '/'}</span
@@ -196,6 +208,8 @@
     <footer>
       {#if current?.kind === 'folder'}
         <span><span class="kbd">enter</span> open in sftp</span>
+      {:else if current?.kind === 'shell'}
+        <span><span class="kbd">enter</span> open terminal</span>
       {:else if current?.kind === 'snippet'}
         <span><span class="kbd">enter</span> run</span>
         <span><span class="kbd">shift+enter</span> paste only</span>

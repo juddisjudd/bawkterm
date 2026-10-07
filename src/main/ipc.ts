@@ -6,6 +6,7 @@ import { SECRET_KEPT } from '@shared/defaults'
 import type { Host, Identity, IpcResult, SshKey, SyncConfig, VaultData } from '@shared/types'
 import { describeKey, generateKey } from './keys'
 import { localFs } from './local-fs'
+import { LocalTerminals } from './local-terminal'
 import { Prompter } from './prompts'
 import { writeBackup } from './backup'
 import { writeFileAtomic } from './files'
@@ -90,6 +91,7 @@ const restore = (incoming: string, stored: string | undefined): string => (incom
 
 export interface Services {
   terminals: Terminals
+  local: LocalTerminals
   sftp: SftpSessions
   prompter: Prompter
   sync: SyncEngine
@@ -113,6 +115,7 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
 
   const prompter = new Prompter(send)
   const terminals = new Terminals(vault, prompter, send)
+  const local = new LocalTerminals(send)
   const sftp = new SftpSessions(vault, prompter, send)
   const docker = new DockerSessions(vault, prompter, send)
   const rdp = new RdpLauncher(vault, prompter)
@@ -420,7 +423,15 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   listen('ssh:resize', (sid, cols, rows) => terminals.resize(id(sid), size(cols), size(rows)))
   listen('ssh:ack', (sid, bytes) => terminals.ack(id(sid), int(bytes, 'bytes', 0, 1024 ** 3)))
 
+  handle('pty:list', () => local.list())
+  handle('pty:open', (sid, shell, cols, rows) => local.open(id(sid), line(shell, 'shell', 256), size(cols), size(rows)))
+  handle('pty:close', (sid) => local.close(id(sid)))
+  listen('pty:write', (sid, data) => local.write(id(sid), text(data, 'input', 16 * 1024 * 1024)))
+  listen('pty:resize', (sid, cols, rows) => local.resize(id(sid), size(cols), size(rows)))
+  listen('pty:ack', (sid, bytes) => local.ack(id(sid), int(bytes, 'bytes', 0, 1024 ** 3)))
+
   handle('sftp:open', (sid, target) => sftp.open(id(sid), cleanTarget(target)))
+  handle('sftp:attach', (sid, terminal) => sftp.attach(id(sid), terminals.connection(id(terminal))))
   handle('sftp:list', (sid, p) => sftp.list(id(sid), path(p)))
   handle('sftp:realpath', (sid, p) => sftp.realpath(id(sid), path(p)))
   handle('sftp:mkdir', (sid, p) => sftp.mkdir(id(sid), path(p)))
@@ -455,12 +466,17 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   handle('docker:close', (sid) => docker.close(id(sid)))
 
   handle('local:home', () => localFs.home())
+  handle('local:downloads', () => saveFolder())
+  handle('local:pickFiles', async () => {
+    const res = await dialog.showOpenDialog(win, { title: 'Upload files', properties: ['openFile', 'multiSelections'] })
+    return res.canceled ? [] : res.filePaths
+  })
   handle('local:list', (p) => localFs.list(path(p)))
   handle('local:mkdir', (p) => localFs.mkdir(path(p)))
   handle('local:rename', (from, to) => localFs.rename(path(from), path(to)))
   handle('local:trash', (list) => localFs.trash(paths(list)))
   // the main process asks, so even a compromised window cannot run a program without the user seeing it
-  handle('local:open', async (p) => {
+  handle('shell:open', async (p) => {
     const file = path(p)
     if (RUNNABLE.test(file)) {
       const { response } = await dialog.showMessageBox(win, {
@@ -502,5 +518,5 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
     if (/^https?:\/\//i.test(target)) void shell.openExternal(target)
   })
 
-  return { terminals, sftp, prompter, sync, docker, rdp, updater }
+  return { terminals, local, sftp, prompter, sync, docker, rdp, updater }
 }

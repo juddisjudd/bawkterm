@@ -11,11 +11,13 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import X from '@lucide/svelte/icons/x'
   import { app, tabName, type Tab } from '$lib/state.svelte'
-  import { onSessionData, registerTerminal } from '$lib/sessions'
+  import { onSessionData, registerTerminal, terminalApi } from '$lib/sessions'
   import { SEARCH_DECORATIONS, terminalIsDark, terminalTheme } from '$lib/theme'
   import { focusOnMount } from '$lib/focus'
   import { Reconnector } from '$lib/reconnect.svelte'
   import { MOD, mod, shellSafe } from '$lib/keys'
+  import { CwdTracker } from '$lib/cwd'
+  import FilesPanel from './FilesPanel.svelte'
 
   let { tab, active }: { tab: Tab; active: boolean } = $props()
 
@@ -29,8 +31,11 @@
   let searchOpen = $state(false)
   let query = $state('')
   let results = $state({ index: -1, count: 0 })
+  const local = $derived(tab.kind === 'local')
+  const io = $derived(terminalApi(tab.kind))
   const reconnect = new Reconnector(() => connect())
   const retry = $derived(reconnect.state)
+  const cwds = new CwdTracker()
 
   const live = $derived(tab.status === 'connected')
   const ended = $derived(tab.status === 'closed' || tab.status === 'error')
@@ -47,8 +52,8 @@
   }
 
   function send(data: string): void {
-    if (live) window.api.ssh.write(tab.id, data)
-    for (const peer of app.broadcastPeers(tab.id)) window.api.ssh.write(peer, data)
+    if (live) io.write(tab.id, data)
+    for (const peer of app.broadcastPeers(tab.id)) terminalApi(peer.kind).write(peer.id, data)
   }
 
   // xterm only marks typed and pasted data as user input, so replies to terminal queries never reach other panes
@@ -65,11 +70,35 @@
   function connect(): void {
     if (!term) return
     app.updateTab({ sessionId: tab.id, status: 'connecting' })
-    window.api.ssh.open(tab.id, $state.snapshot(tab.target), term.cols, term.rows, tab.command).catch(() => {})
+    const target = $state.snapshot(tab.target)
+    const opening =
+      'local' in target
+        ? window.api.shell.open(tab.id, target.local, term.cols, term.rows)
+        : window.api.ssh.open(tab.id, target, term.cols, term.rows, tab.command)
+    opening.catch(() => {})
   }
 
   function reconnectNow(): void {
     reconnect.now()
+  }
+
+  function reportCwd(cwd: string | null): void {
+    if (cwd && tab.kind === 'ssh') tab.cwd = cwd
+  }
+
+  // Ctrl+U clears anything half-typed at the prompt, and the leading space keeps the cd out of shell history
+  function cdHere(path: string): void {
+    if (!term || !live) return
+    if (term.buffer.active.type === 'alternate') {
+      app.toast('Quit the full-screen program in the terminal first', 'error')
+      return
+    }
+    if (/[\r\n]/.test(path)) {
+      app.toast('That folder name has a line break, so the shell cannot take it', 'error')
+      return
+    }
+    io.write(tab.id, `\x15 cd '${path.replaceAll("'", "'\\''")}'\r`)
+    term.focus()
   }
 
   function copySelection(): boolean {
@@ -207,18 +236,23 @@
       onUserInput(t, () => (typed = !mouseOnTerminal())),
       t.onData((data) => {
         if (typed) send(data)
-        else if (live) window.api.ssh.write(tab.id, data)
+        else if (live) io.write(tab.id, data)
         typed = false
       }),
-      t.onResize(({ cols, rows }) => window.api.ssh.resize(tab.id, cols, rows)),
+      t.onResize(({ cols, rows }) => io.resize(tab.id, cols, rows)),
       t.onSelectionChange(() => {
         if (app.settings.copyOnSelect) copySelection()
       }),
       t.onBell(notifyBell),
+      t.parser.registerOscHandler(7, (data) => {
+        reportCwd(cwds.osc7(data))
+        return true
+      }),
+      t.onTitleChange((title) => reportCwd(cwds.title(title))),
       search.onDidChangeResults(({ resultIndex, resultCount }) => (results = { index: resultIndex, count: resultCount }))
     ]
     const stopData = onSessionData(tab.id, (data) => {
-      t.write(data, () => window.api.ssh.ack(tab.id, data.length))
+      t.write(data, () => io.ack(tab.id, data.length))
     })
     const unregister = registerTerminal(tab.id, {
       paste: (text) => void guardedPaste(text),
@@ -258,7 +292,7 @@
       stopData()
       for (const d of disposables) d.dispose()
       t.dispose()
-      void window.api.ssh.close(tab.id)
+      void io.close(tab.id)
     }
   })
 
@@ -301,95 +335,107 @@
     if (!term || status === lastStatus) return
     const previous = lastStatus
     lastStatus = status
+    if (status === 'connecting') cwds.reset()
     const again = reconnect.track(status, tab.dropped, tab.message, app.settings.autoReconnect)
     if (previous === 'connected' && status === 'closed') {
-      term.write(`\r\n\x1b[2m── ${tab.message ?? 'disconnected'}${again ? ' · reconnecting' : ' · press r to reconnect'} ──\x1b[0m\r\n`)
+      term.write(`\r\n\x1b[2m── ${tab.message ?? 'disconnected'}${again ? ' · reconnecting' : ` · press r to ${local ? 'restart' : 'reconnect'}`} ──\x1b[0m\r\n`)
     }
   })
 </script>
 
-<div class="terminal-view" style:background={colors.background}>
-  <div class="xterm-host" bind:this={el}></div>
+<div class="with-files">
+  <div class="terminal-view" style:background={colors.background}>
+    <div class="xterm-host" bind:this={el}></div>
 
-  {#if searchOpen}
-    <div class="search">
-      <input
-        bind:value={query}
-        placeholder="find"
-        spellcheck="false"
-        oninput={() => find(true, true)}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') find(!e.shiftKey)
-          else if (e.key === 'Escape') closeSearch()
-        }}
-        {@attach focusOnMount()}
-      />
-      <span class="count">{results.count ? `${results.index + 1}/${results.count}` : query ? '0/0' : ''}</span>
-      <button type="button" class="btn small icon ghost" aria-label="Previous match" onclick={() => find(false)}><ChevronUp /></button>
-      <button type="button" class="btn small icon ghost" aria-label="Next match" onclick={() => find(true)}><ChevronDown /></button>
-      <button type="button" class="btn small icon ghost" aria-label="Close search" onclick={closeSearch}><X /></button>
-    </div>
-  {/if}
-
-  {#if zoom !== 0}
-    <button type="button" class="zoom" title="Reset zoom ({MOD}+0)" onclick={() => (zoom = 0)}>
-      {zoom > 0 ? '+' : ''}{zoom}pt
-    </button>
-  {/if}
-
-  {#if tab.status === 'connecting' && !retry}
-    <div class="overlay">
-      <div class="panel">
-        <p class="strong"><span class="dot connecting"></span> connecting to {tab.title}</p>
-        <p class="muted">{tab.message ?? 'opening connection…'}</p>
-        <button type="button" class="btn small" onclick={() => app.closeTab(tab.id)}>Cancel</button>
+    {#if searchOpen}
+      <div class="search">
+        <input
+          bind:value={query}
+          placeholder="find"
+          spellcheck="false"
+          oninput={() => find(true, true)}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') find(!e.shiftKey)
+            else if (e.key === 'Escape') closeSearch()
+          }}
+          {@attach focusOnMount()}
+        />
+        <span class="count">{results.count ? `${results.index + 1}/${results.count}` : query ? '0/0' : ''}</span>
+        <button type="button" class="btn small icon ghost" aria-label="Previous match" onclick={() => find(false)}><ChevronUp /></button>
+        <button type="button" class="btn small icon ghost" aria-label="Next match" onclick={() => find(true)}><ChevronDown /></button>
+        <button type="button" class="btn small icon ghost" aria-label="Close search" onclick={closeSearch}><X /></button>
       </div>
-    </div>
-  {:else if retry}
-    <div class="bar">
-      <span class="muted">
-        <span class="dot connecting"></span>
-        {tab.status === 'connecting' ? `reconnecting (attempt ${retry?.attempt})…` : `connection lost · retrying in ${retry?.seconds}s (attempt ${retry?.attempt})`}
-      </span>
-      <button type="button" class="btn small" onclick={reconnectNow}>Retry now</button>
-      <button type="button" class="btn small ghost" onclick={() => reconnect.stop()}>Stop</button>
-    </div>
-  {:else if !live && tab.status === 'error'}
-    <div class="overlay">
-      <div class="panel error">
-        <p class="strong"><span class="dot error"></span> could not connect to {tab.title}</p>
-        <p class="message selectable">{tab.message}</p>
-        <div class="actions">
-          <button type="button" class="btn small strong" onclick={reconnectNow}>Reconnect</button>
-          {#if hostId}
-            <button
-              type="button"
-              class="btn small"
-              onclick={() => {
-                app.active = 'home'
-                app.section = 'hosts'
-                app.editingHost = hostId
-              }}>Edit host</button
-            >
-          {/if}
-          <button type="button" class="btn small ghost" onclick={() => app.closeTab(tab.id)}>Close tab</button>
+    {/if}
+
+    {#if zoom !== 0}
+      <button type="button" class="zoom" title="Reset zoom ({MOD}+0)" onclick={() => (zoom = 0)}>
+        {zoom > 0 ? '+' : ''}{zoom}pt
+      </button>
+    {/if}
+
+    {#if tab.status === 'connecting' && !retry}
+      <div class="overlay">
+        <div class="panel">
+          <p class="strong"><span class="dot connecting"></span> {local ? 'starting' : 'connecting to'} {tab.title}</p>
+          <p class="muted">{tab.message ?? 'opening connection…'}</p>
+          <button type="button" class="btn small" onclick={() => app.closeTab(tab.id)}>Cancel</button>
         </div>
       </div>
-    </div>
-  {:else if tab.status === 'closed'}
-    <div class="bar">
-      <span class="muted">[x] {tab.message ?? 'session closed'}</span>
-      <button type="button" class="btn small" onclick={reconnectNow}>Reconnect <span class="kbd">r</span></button>
-      <button type="button" class="btn small ghost" onclick={() => app.closeTab(tab.id)}>Close tab</button>
-    </div>
+    {:else if retry}
+      <div class="bar">
+        <span class="muted">
+          <span class="dot connecting"></span>
+          {tab.status === 'connecting' ? `reconnecting (attempt ${retry?.attempt})…` : `connection lost · retrying in ${retry?.seconds}s (attempt ${retry?.attempt})`}
+        </span>
+        <button type="button" class="btn small" onclick={reconnectNow}>Retry now</button>
+        <button type="button" class="btn small ghost" onclick={() => reconnect.stop()}>Stop</button>
+      </div>
+    {:else if !live && tab.status === 'error'}
+      <div class="overlay">
+        <div class="panel error">
+          <p class="strong"><span class="dot error"></span> could not {local ? 'start' : 'connect to'} {tab.title}</p>
+          <p class="message selectable">{tab.message}</p>
+          <div class="actions">
+            <button type="button" class="btn small strong" onclick={reconnectNow}>{local ? 'Restart' : 'Reconnect'}</button>
+            {#if hostId}
+              <button
+                type="button"
+                class="btn small"
+                onclick={() => {
+                  app.active = 'home'
+                  app.section = 'hosts'
+                  app.editingHost = hostId
+                }}>Edit host</button
+              >
+            {/if}
+            <button type="button" class="btn small ghost" onclick={() => app.closeTab(tab.id)}>Close tab</button>
+          </div>
+        </div>
+      </div>
+    {:else if tab.status === 'closed'}
+      <div class="bar">
+        <span class="muted">[x] {tab.message ?? 'session closed'}</span>
+        <button type="button" class="btn small" onclick={reconnectNow}>{local ? 'Restart' : 'Reconnect'} <span class="kbd">r</span></button>
+        <button type="button" class="btn small ghost" onclick={() => app.closeTab(tab.id)}>Close tab</button>
+      </div>
+    {/if}
+  </div>
+  {#if tab.files && tab.kind === 'ssh'}
+    <FilesPanel {tab} oncd={cdHere} />
   {/if}
 </div>
 
 <style>
+  .with-files {
+    display: flex;
+    height: 100%;
+  }
   .terminal-view {
     position: relative;
     display: flex;
+    flex: 1;
     flex-direction: column;
+    min-width: 0;
     height: 100%;
   }
   .xterm-host {

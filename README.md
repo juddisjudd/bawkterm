@@ -17,6 +17,8 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 ## Features
 
 - **SSH terminal**: tabs with WebGL rendering, split panes (side by side or stacked, mixing SSH, SFTP and Docker) with broadcast input to type into every terminal of a tab at once, jump hosts (chained), agent auth (OpenSSH agent and Pageant, including FIDO2 security keys such as a YubiKey), keyboard-interactive and key auth, auto-reconnect, a per-host startup command, paste protection, scrollback search, per-tab zoom, 31 themes including the Black & Gems, Monokai and Coffee variants of [Bearded Theme](https://github.com/BeardedBear/bearded-theme) (the app's colors can match the terminal's), colors, font and cursor imported from Windows Terminal, Alacritty, Ghostty, Kitty, WezTerm, iTerm2 or Warp, tabs reopened on launch.
+- **Local terminal**: a shell on this computer in a tab or pane, next to your SSH sessions: PowerShell, Command Prompt, Git Bash and WSL distributions on Windows, your login shell and the others in `/etc/shells` on macOS and Linux. Pick the default under settings → terminal.
+- **Files beside the terminal**: Ctrl+Shift+B (Cmd+B on macOS) opens the server's files next to an SSH terminal, over the same connection, so there is no second login. The panel follows the folder you `cd` into, and "cd here" moves the terminal to the folder you browse to. See [Files beside the terminal](#files-beside-the-terminal).
 - **SFTP**: side-by-side local and remote panes, drag and drop (also from Explorer), recursive transfers with Replace / Keep both / Skip, type-to-filter, favorite folders and folder colors per host, "Open terminal here".
 - **Built-in editor**: "Edit in editor" opens remote files in a tab with syntax highlighting for about 100 languages, search, and Ctrl+S (Cmd+S on macOS) to save back. You can pick VS Code, another installed editor or any program instead.
 - **Keychain**: generate ed25519, RSA and ECDSA keys; import OpenSSH, PEM and PuTTY `.ppk` keys (formats 2 and 3, with or without a passphrase); reusable identities (username plus password or key).
@@ -30,6 +32,36 @@ Built with Electron, Svelte 5 and [ssh2](https://github.com/mscdex/ssh2). Styled
 | SFTP with favorites and folder colors | Built-in editor | Docker over SSH |
 | --- | --- | --- |
 | ![Two-pane SFTP view with a favorites strip and colored folders](docs/screenshots/sftp.png) | ![A shell script open in the built-in editor with syntax highlighting](docs/screenshots/editor.png) | ![Containers grouped by Compose project with shell, logs and restart buttons](docs/screenshots/docker.png) |
+
+### Files beside the terminal
+
+Press Ctrl+Shift+B (Cmd+B on macOS), click **files** at the top right, or right-click the tab and pick **Show files**. The panel opens an SFTP channel on the terminal's own connection. Hiding it closes only that channel, and it comes back by itself when the terminal reconnects. Drop files from Explorer or Finder onto it to upload them. **Download** saves to your Downloads folder.
+
+The panel follows the terminal's folder when the shell reports it. Most do already:
+
+- **bash** on Debian, Ubuntu, Fedora, RHEL and Arch, and **zsh** with oh-my-zsh: they put `user@host: ~/folder` in the window title at each prompt.
+- Any shell that sends the folder as OSC 7, the standard escape sequence for it.
+
+If the panel says the shell does not report its folder, add one of these to the shell's startup file on the server:
+
+```sh
+# bash: ~/.bashrc
+PROMPT_COMMAND='printf "\e]7;file://%s%s\a" "$HOSTNAME" "$PWD"'"${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+
+# zsh: ~/.zshrc
+autoload -Uz add-zsh-hook
+_bawkterm_cwd() { printf '\e]7;file://%s%s\a' "$HOST" "$PWD" }
+add-zsh-hook precmd _bawkterm_cwd
+```
+
+```fish
+# fish: ~/.config/fish/config.fish
+function _bawkterm_cwd --on-event fish_prompt
+    printf '\e]7;file://%s%s\a' $hostname $PWD
+end
+```
+
+The panel ignores reports from another machine, so it stays put when you `ssh` onward from the terminal. Turn off following with the target button in the panel. **cd here** types `cd '<folder>'` into the terminal after clearing the prompt line with Ctrl+U. It refuses while a full-screen program such as vim is open.
 
 ## Install
 
@@ -85,7 +117,7 @@ Linux notes:
   ```
 - **Auto-unlock** needs a keyring: GNOME Keyring or KWallet, which most desktops include. Without one, bawkterm does not offer auto-unlock, because Electron would fall back to a key that protects nothing.
 - **Remote Desktop hosts** need FreeRDP 3: `sudo apt install freerdp3-x11` on Ubuntu 24.04 (plain `xfreerdp` there is the older FreeRDP 2), the `freerdp` package on Fedora and Arch. bawkterm passes the password through a private pipe, never on the command line. Server certificates are trusted on first use.
-- **The Flatpak** runs sandboxed. It can reach your home folder, the network, your keyring and your SSH agent, but it cannot start programs outside the sandbox. External editors and Remote Desktop therefore don't work there; the built-in editor does.
+- **The Flatpak** runs sandboxed. It can reach your home folder, the network, your keyring and your SSH agent, but it cannot start programs outside the sandbox. External editors and Remote Desktop therefore don't work there; the built-in editor does. A local terminal opens a shell inside the sandbox, not your system's shell.
 - Windows Hello and passkey unlock are Windows-only for now. On Linux, the vault locks when the computer goes to sleep (Electron cannot detect a locked screen there).
 
 ## Security model
@@ -142,7 +174,7 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
 ### What bawkterm does not protect against
 
 - **Malware running as your user account.** It can read the app's memory while the vault is unlocked, log your keystrokes, or use auto-unlock if you turned it on.
-- **Open sessions while locked.** Locking hides everything and requires unlocking, but SSH and SFTP sessions stay connected.
+- **Open sessions while locked.** Locking hides everything and requires unlocking, but SSH and SFTP sessions stay connected and local terminals keep running.
 - **A leaked sync link or server token.** Treat them like passwords. To rotate them, set up sync again with a new token.
 - **Losing every device and the sync link.** The server cannot read your data, so it cannot give it back. bawkterm asks you to save the sync link when you set up sync; keep it in a password manager.
 - **A hijacked release.** Builds are not code-signed yet, so the updater trusts whatever this repository's GitHub releases contain. Someone who took over the maintainer's GitHub account could publish a malicious update.
@@ -150,7 +182,7 @@ bawkterm holds the keys to your servers. To report a security problem, see [SECU
 
 ## Build from source
 
-Needs [Bun](https://bun.sh) 1.4+ and Node 24+ (Electron's tooling runs on Node).
+Needs [Bun](https://bun.sh) 1.4+ and Node 24+ (Electron's tooling runs on Node). On Linux, `bun install` also compiles the local terminal's native module, which needs Python 3, `make` and a C++ compiler (`sudo apt install build-essential python3`).
 
 ```sh
 bun install
@@ -193,6 +225,7 @@ The script refuses a dirty tree or a branch other than `main`. It bumps `package
 | Windows and Linux | macOS | Action |
 | --- | --- | --- |
 | Ctrl+Shift+P | Cmd+Shift+P | open host / quick connect (`user@host:port`); Shift+Enter opens SFTP |
+| Ctrl+Shift+T | Cmd+T | new local terminal |
 | Ctrl+Shift+S | Cmd+Shift+S | run a snippet in the terminal |
 | Ctrl+Shift+F | Cmd+F | search terminal output |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Cmd+= / Cmd+- / Cmd+0 | zoom terminal text in, out, reset |

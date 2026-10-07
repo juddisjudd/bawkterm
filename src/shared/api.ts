@@ -15,6 +15,7 @@ import type {
   ImportSource,
   ImportSourceId,
   ImportSummary,
+  LocalShell,
   KeyGenRequest,
   KeyImportRequest,
   PromptRequest,
@@ -121,8 +122,21 @@ export interface BawkApi {
     onData(cb: (sessionId: string, data: Uint8Array) => void): Unsubscribe
     onStatus(cb: (event: SessionEvent) => void): Unsubscribe
   }
+  // a shell on this computer, with the same calls as an SSH terminal so one view serves both
+  shell: {
+    list(): Promise<LocalShell[]>
+    open(sessionId: string, shell: string, cols: number, rows: number): Promise<void>
+    write(sessionId: string, data: string): void
+    resize(sessionId: string, cols: number, rows: number): void
+    ack(sessionId: string, bytes: number): void
+    close(sessionId: string): Promise<void>
+    onData(cb: (sessionId: string, data: Uint8Array) => void): Unsubscribe
+    onStatus(cb: (event: SessionEvent) => void): Unsubscribe
+  }
   sftp: {
     open(sessionId: string, target: ConnectTarget): Promise<{ home: string; title: string }>
+    // an SFTP channel on an SSH terminal's own connection, so it needs no second login
+    attach(sessionId: string, terminalId: string): Promise<{ home: string; title: string }>
     list(sessionId: string, path: string): Promise<FileEntry[]>
     realpath(sessionId: string, path: string): Promise<string>
     mkdir(sessionId: string, path: string): Promise<void>
@@ -161,6 +175,8 @@ export interface BawkApi {
   }
   local: {
     home(): Promise<string>
+    downloads(): Promise<string>
+    pickFiles(): Promise<string[]>
     list(path: string): Promise<FileEntry[]>
     mkdir(path: string): Promise<void>
     rename(from: string, to: string): Promise<void>

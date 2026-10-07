@@ -16,7 +16,7 @@
   import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
   import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from '@codemirror/language'
   import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
-  import { app, type Tab } from '$lib/state.svelte'
+  import { app, serverTarget, type Tab } from '$lib/state.svelte'
   import { detectLanguage, editorHighlight, editorTheme } from '$lib/editor'
   import { MOD } from '$lib/keys'
 
@@ -56,7 +56,7 @@
       return await task(sessionId)
     } catch (err) {
       if (!/not connected/.test((err as Error).message)) throw err
-      await api.sftp.open(tab.id, $state.snapshot(tab.target))
+      await api.sftp.open(tab.id, serverTarget(tab))
       sessionId = tab.id
       return task(sessionId)
     }

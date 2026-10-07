@@ -1,0 +1,31 @@
+diff --git a/lib/windowsPtyAgent.js b/lib/windowsPtyAgent.js
+index a358ffb177357e177661033c1b092f9c9d0e5f5a..ced57f0be5d805c95d5f4fdf1f07eee86d4fb84a 100644
+--- a/lib/windowsPtyAgent.js
++++ b/lib/windowsPtyAgent.js
+@@ -180,6 +180,9 @@ var WindowsPtyAgent = /** @class */ (function () {
+     };
+     WindowsPtyAgent.prototype._getConsoleProcessList = function () {
+         var _this = this;
++        // fork needs ELECTRON_RUN_AS_NODE, which a fused Electron app ignores and starts a second copy of itself instead
++        if (process.versions.electron)
++            return Promise.resolve([this._innerPid]);
+         return new Promise(function (resolve) {
+             var agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);
+             agent.on('message', function (message) {
+diff --git a/scripts/post-install.js b/scripts/post-install.js
+index 8dbac507ea9c64169ea500a0115816056c0bc309..cf220eff2375a0d0fc2b23cef3b00444dfc6f84b 100644
+--- a/scripts/post-install.js
++++ b/scripts/post-install.js
+@@ -47,6 +47,12 @@ try {
+   process.exit(1);
+ }
+ 
++// the published macOS spawn-helper lacks its execute bit, so every spawn fails with "posix_spawnp failed"
++for (const arch of ['arm64', 'x64']) {
++  const helper = path.join(__dirname, '../prebuilds', `darwin-${arch}`, 'spawn-helper');
++  if (fs.existsSync(helper)) fs.chmodSync(helper, 0o755);
++}
++
+ console.log(`\x1b[32m> Moving conpty.dll...\x1b[0m`);
+ if (os.platform() !== 'win32') {
+   console.log('  SKIPPED (not Windows)');

@@ -50,6 +50,15 @@
       e.preventDefault()
       e.stopPropagation()
       void app.lock()
+    } else if (shellSafe(e, 't')) {
+      e.preventDefault()
+      e.stopPropagation()
+      app.openLocal()
+    } else if (shellSafe(e, 'b')) {
+      if (app.tabs.find((t) => t.id === app.active)?.kind !== 'ssh') return
+      e.preventDefault()
+      e.stopPropagation()
+      app.toggleFiles(app.active)
     } else if (splitKey(e)) {
       const tab = app.tabs.find((t) => t.id === app.active)
       if (!tab || tab.kind === 'edit') return

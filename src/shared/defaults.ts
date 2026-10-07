@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: Settings = {
   osc52: false,
   bellNotify: true,
   terminalTheme: 'auto',
+  localShell: '',
   restoreTabs: true,
   lockOnSystemLock: true,
   autoUpdate: true,

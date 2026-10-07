@@ -53,6 +53,7 @@
             <span class="dir">{t.direction === 'upload' ? '↑' : '↓'}</span>
             <span class="name" title={`${t.source} → ${t.dest}`}>{visibleName(t.name)}</span>
             <span class="bar">{bar(fraction)} {Math.floor(fraction * 100)}%</span>
+            <span class="pct">{Math.floor(fraction * 100)}%</span>
             <span class="size">{bytes(t.bytes)} / {bytes(t.total)}{t.files > 1 ? ` · ${t.filesDone}/${t.files} files` : ''}</span>
             <span class="state" title={t.error}>{t.error ?? label(t)}</span>
             {#if t.state === 'active' || t.state === 'queued'}
@@ -78,6 +79,7 @@
     border: 1px solid var(--border-weak);
     border-radius: var(--radius-lg);
     overflow: hidden;
+    container-type: inline-size;
   }
   header {
     display: flex;
@@ -123,6 +125,23 @@
   .bar {
     color: var(--text);
     white-space: pre;
+  }
+  .pct {
+    display: none;
+    color: var(--text);
+    text-align: right;
+  }
+  @container (max-width: 600px) {
+    li {
+      grid-template-columns: 16px minmax(0, 1fr) 36px 72px 24px;
+    }
+    .bar,
+    .size {
+      display: none;
+    }
+    .pct {
+      display: block;
+    }
   }
   .size,
   .state {

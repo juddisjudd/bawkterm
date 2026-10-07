@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "electron-updater": "6.8.9",
+    "node-pty": "1.1.0",
     "ssh2": "1.17.0"
   },
   "devDependencies": {
@@ -64,11 +65,13 @@
   },
   "packageManager": "bun@1.4.0",
   "trustedDependencies": [
-    "esbuild"
+    "esbuild",
+    "node-pty"
   ],
   "homepage": "https://github.com/juddisjudd/bawkterm",
   "desktopName": "bawkterm.desktop",
   "patchedDependencies": {
-    "ssh2@1.17.0": "patches/ssh2@1.17.0.patch"
+    "ssh2@1.17.0": "patches/ssh2@1.17.0.patch",
+    "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
   }
 }

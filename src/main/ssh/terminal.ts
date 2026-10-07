@@ -121,6 +121,11 @@ export class Terminals {
     this.status(session.id, 'closed', dropped && message === 'Session ended' ? 'Connection lost' : message, dropped)
   }
 
+  connection(sessionId: string): Connection | undefined {
+    const session = this.sessions.get(sessionId)
+    return session?.stream && !session.closed ? session.conn : undefined
+  }
+
   write(sessionId: string, data: string): void {
     this.sessions.get(sessionId)?.stream?.write(data)
   }

@@ -3,7 +3,7 @@
   import Star from '@lucide/svelte/icons/star'
   import type { FileEntry, FolderColor, Host } from '@shared/types'
   import { remapFolders, type FolderMarks } from '$lib/folders'
-  import { app, type Tab } from '$lib/state.svelte'
+  import { app, serverTarget, type Tab } from '$lib/state.svelte'
   import { localPath, remotePath } from '$lib/paths'
   import FilePane from './FilePane.svelte'
   import Transfers from './Transfers.svelte'
@@ -24,7 +24,7 @@
   const reconnect = new Reconnector(() => void connect())
 
   $effect(() => void reconnect.track(tab.status, tab.dropped, tab.message, app.settings.autoReconnect))
-  const target = $derived(tab.target)
+  const target = $derived(serverTarget(tab))
   const host = $derived('hostId' in target ? app.vault?.hosts.find((h) => h.id === target.hostId) : undefined)
   const pathKey = $derived('hostId' in target ? target.hostId : `adhoc:${target.adhoc.username}@${target.adhoc.address}:${target.adhoc.port}`)
   const bookmarked = $derived(!!host?.bookmarks.includes(remote))
@@ -98,7 +98,7 @@
   async function connect(): Promise<void> {
     app.updateTab({ sessionId: tab.id, status: 'connecting' })
     try {
-      const res = await api.sftp.open(tab.id, $state.snapshot(tab.target))
+      const res = await api.sftp.open(tab.id, serverTarget(tab))
       remoteTitle = res.title
       if (!remote) {
         const last = app.lastPath(pathKey)

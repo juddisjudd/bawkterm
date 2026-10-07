@@ -183,6 +183,8 @@ export interface Settings {
   osc52: boolean
   bellNotify: boolean
   terminalTheme: string
+  // empty: the first shell bawkterm finds
+  localShell: string
   restoreTabs: boolean
   lockOnSystemLock: boolean
   autoUpdate: boolean
@@ -202,12 +204,13 @@ export interface VaultData {
 }
 
 export interface SavedTab {
-  kind: 'ssh' | 'sftp' | 'docker'
-  target: ConnectTarget
+  kind: 'ssh' | 'sftp' | 'docker' | 'local'
+  target: TabTarget
   title: string
   command?: string
   label?: string
   color?: FolderColor
+  files?: boolean
 }
 
 // row puts the panes side by side, column stacks them
@@ -221,6 +224,7 @@ export interface LocalState {
   active: number
   splits: PaneTree<number>[]
   lastPaths: Record<string, string>
+  filesWidth?: number
 }
 
 export interface PasskeyEnrollment {
@@ -265,6 +269,14 @@ export interface AdhocTarget {
 }
 
 export type ConnectTarget = { hostId: string } | { adhoc: AdhocTarget }
+
+// a tab runs either on a server or in a shell on this computer, named by its id from the detected list
+export type TabTarget = ConnectTarget | { local: string }
+
+export interface LocalShell {
+  id: string
+  name: string
+}
 
 export type SessionStatus = 'connecting' | 'connected' | 'closed' | 'error'
 

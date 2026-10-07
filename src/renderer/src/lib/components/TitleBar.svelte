@@ -2,16 +2,18 @@
   import X from '@lucide/svelte/icons/x'
   import Plus from '@lucide/svelte/icons/plus'
   import RadioTower from '@lucide/svelte/icons/radio-tower'
+  import FolderOpen from '@lucide/svelte/icons/folder-open'
   import type { SessionStatus } from '@shared/types'
   import { app, tabName, type StripEntry, type Tab } from '$lib/state.svelte'
   import { tabMenu } from '$lib/tab-menu.svelte'
   import { tint } from '$lib/folders'
-  import { MOD } from '$lib/keys'
+  import { MOD, shellSafeLabel } from '$lib/keys'
   import Logo from './Logo.svelte'
 
   let strip = $state<HTMLElement>()
 
   const PROBLEMS: SessionStatus[] = ['error', 'closed', 'connecting']
+  const activeTab = $derived(app.tabs.find((t) => t.id === app.active))
 
   $effect(() => {
     const key = app.splitOf(app.active)?.id ?? app.active
@@ -95,6 +97,16 @@
       onclick={() => app.openPalette()}><Plus size={15} /></button
     >
   </nav>
+  {#if activeTab?.kind === 'ssh'}
+    {@const tab = activeTab}
+    <button
+      type="button"
+      class={['files', tab.files && 'on']}
+      aria-pressed={!!tab.files}
+      title="{tab.files ? 'Hide' : 'Show'} files ({shellSafeLabel('B')})"
+      onclick={() => app.toggleFiles(tab.id)}><FolderOpen size={14} /><span>files</span></button
+    >
+  {/if}
 </header>
 
 <style>
@@ -223,6 +235,23 @@
     -webkit-app-region: no-drag;
   }
   .new:hover {
+    color: var(--text-strong);
+  }
+  .files {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    padding: 0 14px;
+    border: 0;
+    background: none;
+    color: var(--text-weak);
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+  }
+  .files:hover,
+  .files.on {
     color: var(--text-strong);
   }
 </style>

@@ -1,10 +1,12 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x'
   import RadioTower from '@lucide/svelte/icons/radio-tower'
-  import { app, tabName, type Split, type Tab } from '$lib/state.svelte'
+  import FolderOpen from '@lucide/svelte/icons/folder-open'
+  import { app, isTerminal, tabName, type Split, type Tab } from '$lib/state.svelte'
   import { layout, leaves, type Divider, type Rect } from '$lib/panes'
   import { tabMenu } from '$lib/tab-menu.svelte'
   import { tint } from '$lib/folders'
+  import { shellSafeLabel } from '$lib/keys'
   import TitleBar from './TitleBar.svelte'
   import VaultView from './VaultView.svelte'
   import TerminalView from './TerminalView.svelte'
@@ -18,7 +20,7 @@
   const split = $derived(app.splitOf(app.active))
   const panes = $derived(split ? layout(split.root) : null)
   const terminals = $derived(
-    split ? app.tabs.filter((t) => t.kind === 'ssh' && leaves(split.root).includes(t.id)).length : 0
+    split ? app.tabs.filter((t) => isTerminal(t) && leaves(split.root).includes(t.id)).length : 0
   )
 
   const percent = (n: number): string => `${n * 100}%`
@@ -78,7 +80,7 @@
     {#if tab.status !== 'connected'}<span class={['dot', tab.status]} title={tab.status}></span>{/if}
     <span class="name" title={tab.message}>{tabName(tab)}</span>
     {#if tab.bell}<span class="bell" title="bell">!</span>{/if}
-    {#if tab.kind === 'ssh' && terminals > 1}
+    {#if isTerminal(tab) && terminals > 1}
       <button
         type="button"
         class={['head-btn', split.broadcast && 'cast']}
@@ -86,6 +88,15 @@
         title={split.broadcast ? 'Stop broadcasting input' : 'Broadcast input to all panes'}
         onclick={() => app.toggleBroadcast(split)}
         ><RadioTower size={13} />{#if split.broadcast}<span>broadcast</span>{/if}</button
+      >
+    {/if}
+    {#if tab.kind === 'ssh'}
+      <button
+        type="button"
+        class={['head-btn', tab.files && 'on']}
+        aria-pressed={!!tab.files}
+        title="{tab.files ? 'Hide' : 'Show'} files ({shellSafeLabel('B')})"
+        onclick={() => app.toggleFiles(tab.id)}><FolderOpen size={13} /></button
       >
     {/if}
     <button type="button" class="head-btn" aria-label="Close pane" title="Close pane" onclick={() => app.closeTab(tab.id)}
@@ -115,7 +126,7 @@
           {@render header(tab, split)}
         {/if}
         <div class="body">
-          {#if tab.kind === 'ssh'}
+          {#if isTerminal(tab)}
             <TerminalView {tab} active={app.active === tab.id} />
           {:else if tab.kind === 'sftp'}
             <SftpView {tab} />
@@ -236,6 +247,9 @@
   }
   .head-btn.cast {
     color: var(--warning);
+  }
+  .head-btn.on {
+    color: var(--text-strong);
   }
   .divider {
     position: absolute;

@@ -17,19 +17,21 @@ import type {
   TransferInfo,
   VaultData,
   VaultStatus,
+  LocalShell,
   LocalState,
+  TabTarget,
   UnlockStatus,
   UpdateStatus
 } from '@shared/types'
 
 export type Section = 'hosts' | 'keychain' | 'snippets' | 'known' | 'settings'
 export type SettingsTab = 'appearance' | 'terminal' | 'connections' | 'files' | 'sync' | 'security' | 'updates' | 'shortcuts'
-export type TabKind = 'ssh' | 'sftp' | 'docker' | 'edit'
+export type TabKind = 'ssh' | 'local' | 'sftp' | 'docker' | 'edit'
 
 export interface Tab {
   id: string
   kind: TabKind
-  target: ConnectTarget
+  target: TabTarget
   title: string
   status: SessionStatus
   message?: string
@@ -40,9 +42,23 @@ export interface Tab {
   dirty?: boolean
   label?: string
   color?: FolderColor
+  files?: boolean
+  cwd?: string
 }
 
 export const tabName = (tab: Tab): string => tab.label || tab.title
+
+export const isTerminal = (tab: Tab): boolean => tab.kind === 'ssh' || tab.kind === 'local'
+
+// the files panel beside an SSH terminal has its own SFTP session, on the terminal's connection
+export const filesSession = (tabId: string): string => `${tabId}/files`
+
+// SFTP, Docker and editor tabs always point at a server; only terminal tabs can hold a local shell
+export function serverTarget(tab: Tab): ConnectTarget {
+  const target = $state.snapshot(tab.target)
+  if ('local' in target) throw new Error('This tab runs on this computer, not on a server')
+  return target
+}
 
 export interface Split {
   id: string
@@ -65,6 +81,8 @@ export interface StripEntry {
 
 // keeps the saved tree within the depth that validation accepts
 const MAX_PANES = 16
+const FILES_WIDTH = 360
+export const FILES_MIN_WIDTH = 240
 
 export interface Modal {
   id: string
@@ -137,6 +155,7 @@ class AppState {
   syncStatus = $state<SyncStatus>({ phase: 'off' })
   updateStatus = $state<UpdateStatus>({ supported: false, state: 'idle' })
   unlockStatus = $state<UnlockStatus | null>(null)
+  shells = $state.raw<LocalShell[]>([])
   systemDark = $state(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   theme = $derived.by<'dark' | 'light'>(() => {
@@ -189,6 +208,22 @@ class AppState {
     if (path && this.vault?.local.lastPaths[key] !== path) this.updateLocal((l) => (l.lastPaths[key] = path))
   }
 
+  get filesWidth(): number {
+    return (this.pendingLocal ?? this.vault?.local)?.filesWidth ?? FILES_WIDTH
+  }
+
+  set filesWidth(width: number) {
+    const clamped = Math.round(Math.max(FILES_MIN_WIDTH, width))
+    if (clamped !== this.filesWidth) this.updateLocal((l) => (l.filesWidth = clamped))
+  }
+
+  toggleFiles(id: string): void {
+    const tab = this.tabs.find((t) => t.id === id)
+    if (tab?.kind !== 'ssh') return
+    tab.files = !tab.files
+    this.persistTabs()
+  }
+
   persistTabs(): void {
     if (!this.vault?.settings.restoreTabs) return
     this.updateLocal((l) => {
@@ -203,7 +238,8 @@ class AppState {
         title: t.title,
         command: t.command,
         ...(t.label ? { label: t.label } : {}),
-        ...(t.color ? { color: t.color } : {})
+        ...(t.color ? { color: t.color } : {}),
+        ...(t.files ? { files: true } : {})
       }))
       l.active = kept.findIndex((t) => t.id === this.#active)
     })
@@ -227,6 +263,7 @@ class AppState {
         command: t.command,
         label: t.label,
         color: t.color,
+        files: t.files,
         status: 'connecting'
       })
     })
@@ -260,6 +297,7 @@ class AppState {
     })
     api.vault.onChanged((data) => this.setVault(data))
     api.ssh.onStatus((e) => this.updateTab(e))
+    api.shell.onStatus((e) => this.updateTab(e))
     api.sftp.onStatus((e) => this.updateTab(e))
     api.docker.onStatus((e) => this.updateTab(e))
     api.sftp.onTransfer((info) => this.updateTransfer(info))
@@ -272,6 +310,7 @@ class AppState {
 
   async init(): Promise<void> {
     void api.update.status().then((s) => (this.updateStatus = s))
+    void api.shell.list().then((s) => (this.shells = s), () => {})
     this.status = await api.vault.status()
     void this.refreshUnlock()
     if (this.status.state === 'unlocked') {
@@ -338,7 +377,7 @@ class AppState {
 
   openTab(
     kind: TabKind,
-    target: ConnectTarget,
+    target: TabTarget,
     title: string,
     command?: string,
     look: Pick<Tab, 'label' | 'color'> = {},
@@ -363,7 +402,7 @@ class AppState {
     return true
   }
 
-  targetTitle(target: ConnectTarget, fallback: string): string {
+  targetTitle(target: TabTarget, fallback: string): string {
     const host = 'hostId' in target ? this.vault?.hosts.find((h) => h.id === target.hostId) : undefined
     return host?.label || host?.address || fallback
   }
@@ -373,6 +412,17 @@ class AppState {
     if (!tab || tab.kind === 'edit') return
     const target = $state.snapshot(tab.target)
     this.openTab(tab.kind, target, this.targetTitle(target, tab.title), undefined, {}, { beside: id, dir })
+  }
+
+  // the shell picked in settings, or the first one found when that one is gone
+  openLocal(shellId?: string, place: Placement | null = null): void {
+    const shell =
+      this.shells.find((s) => s.id === (shellId ?? this.settings.localShell)) ?? (shellId ? undefined : this.shells[0])
+    if (!shell) {
+      this.toast('No shell found on this computer', 'error')
+      return
+    }
+    this.openTab('local', { local: shell.id }, shell.name, undefined, {}, place)
   }
 
   detachPane(id: string): void {
@@ -410,12 +460,11 @@ class AppState {
     if (split.broadcast) this.toast('Typing in one terminal of this tab now goes to all of them')
   }
 
-  broadcastPeers(id: string): string[] {
+  broadcastPeers(id: string): Tab[] {
     const split = this.splitOf(id)
     if (!split?.broadcast) return []
-    return leaves(split.root).filter(
-      (other) => other !== id && this.tabs.some((t) => t.id === other && t.kind === 'ssh' && t.status === 'connected')
-    )
+    const panes = new Set(leaves(split.root))
+    return this.tabs.filter((t) => t.id !== id && panes.has(t.id) && isTerminal(t) && t.status === 'connected')
   }
 
   async renameTab(id: string): Promise<void> {
@@ -440,7 +489,7 @@ class AppState {
     this.persistTabs()
   }
 
-  openEditor(from: Tab, path: string): void {
+  openEditor(from: Tab, path: string, sessionId = from.id): void {
     const target = JSON.stringify(from.target)
     const open = this.tabs.find((t) => t.kind === 'edit' && t.edit?.path === path && JSON.stringify(t.target) === target)
     if (open) {
@@ -454,7 +503,7 @@ class AppState {
       target: $state.snapshot(from.target),
       title,
       status: 'connected',
-      edit: { sessionId: from.id, path }
+      edit: { sessionId, path }
     }
     this.tabs.push(tab)
     this.active = tab.id
@@ -484,9 +533,10 @@ class AppState {
     }
     const [tab] = this.tabs.splice(i, 1)
     if (tab.kind === 'ssh') void api.ssh.close(id)
+    else if (tab.kind === 'local') void api.shell.close(id)
     else if (tab.kind === 'sftp' || tab.kind === 'edit') void api.sftp.close(id)
     else void api.docker.close(id)
-    this.transfers = this.transfers.filter((t) => t.sessionId !== id)
+    this.transfers = this.transfers.filter((t) => t.sessionId !== id && t.sessionId !== filesSession(id))
     const split = this.splitOf(id)
     const next = split && sibling(split.root, id)
     if (split) this.dropPane(split, id)

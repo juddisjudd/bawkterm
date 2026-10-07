@@ -6,7 +6,15 @@ directories:
 files:
   - out/**
   - package.json
+  # node-pty ships its sources, debug symbols and every platform's binaries; each build keeps only what runs
+  - '!**/node_modules/node-pty/{src,deps,third_party,scripts,typings,binding.gyp}'
+  - '!**/node_modules/node-pty/**/*.{pdb,map,o,mk,gypi}'
+  - '!**/node_modules/node-pty/lib/**/*.test.js'
+  - '!**/node_modules/node-pty/build/{Makefile,Release/obj.target,Release/.deps,Release/obj}'
 asar: true
+# native binaries, and the worker script node-pty starts on Windows, cannot run from inside app.asar
+asarUnpack:
+  - '**/node_modules/node-pty/**'
 # lock the shipped binary down: no running as plain Node, no inspector, no NODE_OPTIONS, and only the packaged app.asar (hash-checked)
 electronFuses:
   runAsNode: false
@@ -24,6 +32,10 @@ publish:
   repo: bawkterm
   releaseType: release
 win:
+  files:
+    - '!**/node_modules/node-pty/prebuilds/{darwin-*,win32-arm64}/**'
+    # the bundled conpty.dll only runs with useConptyDll, which bawkterm leaves off in favor of the one in Windows
+    - '!**/node_modules/node-pty/{build/Release,prebuilds/win32-x64}/conpty/**'
   icon: build/icon.ico
   extraResources:
     - from: build/icon.ico
@@ -38,6 +50,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   artifactName: ${productName}-${version}-setup.${ext}
 mac:
+  files:
+    - '!**/node_modules/node-pty/prebuilds/win32-*/**'
   icon: build/icon.icns
   category: public.app-category.developer-tools
   # ad-hoc signed, not notarized: enough to run on Apple silicon, but Gatekeeper asks once and updates stay manual
@@ -48,6 +62,9 @@ mac:
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
+  # node-pty has no Linux prebuilds; bun install compiles it into build/Release
+  files:
+    - '!**/node_modules/node-pty/prebuilds/**'
   icon: build/icon.png
   appId: net.bawkbawk.bawkterm
   executableName: bawkterm

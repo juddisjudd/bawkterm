@@ -47,6 +47,8 @@ interface Session {
   running: boolean
   closed: boolean
   userClosed?: boolean
+  borrowed?: boolean
+  release?: () => void
 }
 
 interface Planned {
@@ -120,28 +122,50 @@ export class SftpSessions {
     return sftp
   }
 
-  async open(sessionId: string, target: ConnectTarget): Promise<{ home: string; title: string }> {
-    this.close(sessionId)
-    const session: Session = { id: sessionId, abort: new AbortController(), queue: [], running: false, closed: false }
-    this.sessions.set(sessionId, session)
-    this.status(sessionId, 'connecting')
-    try {
-      session.conn = await connect(target, {
+  open(sessionId: string, target: ConnectTarget): Promise<{ home: string; title: string }> {
+    return this.start(sessionId, false, (session) =>
+      connect(target, {
         vault: this.vault,
         ask: this.prompter.forSession(sessionId),
         signal: session.abort.signal,
         onProgress: (message) => this.status(sessionId, 'connecting', message)
       })
+    )
+  }
+
+  // a channel on a terminal's connection: no second login, and closing it leaves the terminal connected
+  attach(sessionId: string, conn: Connection | undefined): Promise<{ home: string; title: string }> {
+    return this.start(sessionId, true, async () => {
+      if (!conn) throw new Error('The terminal is not connected')
+      return conn
+    })
+  }
+
+  private async start(
+    sessionId: string,
+    borrowed: boolean,
+    connectTo: (session: Session) => Promise<Connection>
+  ): Promise<{ home: string; title: string }> {
+    this.close(sessionId)
+    const session: Session = { id: sessionId, abort: new AbortController(), queue: [], running: false, closed: false, borrowed }
+    this.sessions.set(sessionId, session)
+    this.status(sessionId, 'connecting')
+    try {
+      session.conn = await connectTo(session)
       session.sftp = await call<SFTPWrapper>((cb) => session.conn!.client.sftp(cb))
+      if (session.closed) throw new CancelledError()
     } catch (err) {
-      if (session.conn) closeConnection(session.conn)
-      this.sessions.delete(sessionId)
+      session.sftp?.end()
+      if (session.conn && !borrowed) closeConnection(session.conn)
+      if (this.sessions.get(sessionId) === session) this.sessions.delete(sessionId)
       const message = err instanceof CancelledError ? 'Cancelled' : (err as Error).message
-      this.status(sessionId, err instanceof CancelledError ? 'closed' : 'error', message)
+      if (!session.closed) this.status(sessionId, err instanceof CancelledError ? 'closed' : 'error', message)
       throw new Error(message)
     }
     const { conn, sftp } = session
-    conn.client.on('close', () => this.finish(session, 'Connection lost'))
+    const lost = (): void => this.finish(session, 'Connection lost')
+    conn.client.on('close', lost)
+    session.release = () => conn.client.off('close', lost)
     sftp.on('close', () => this.finish(session, 'SFTP channel closed'))
     const home = await call<string>((cb) => sftp.realpath('.', cb)).catch(() => '/')
     this.status(sessionId, 'connected')
@@ -157,7 +181,9 @@ export class SftpSessions {
     if (!dropped) this.editor.stopSession(session.id)
     this.sessions.delete(session.id)
     for (const job of session.queue) this.cancel(job.info.id)
-    if (session.conn) closeConnection(session.conn)
+    session.release?.()
+    if (session.borrowed) session.sftp?.end()
+    else if (session.conn) closeConnection(session.conn)
     this.status(session.id, 'closed', message, dropped)
   }
 

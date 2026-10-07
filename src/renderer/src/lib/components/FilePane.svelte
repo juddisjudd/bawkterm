@@ -34,6 +34,7 @@
     onopen,
     onedit,
     onterminal,
+    terminalLabel = 'Open terminal here',
     tools,
     overlay,
     marks
@@ -54,6 +55,7 @@
     onopen?: (entry: FileEntry) => void
     onedit?: (entry: FileEntry) => void
     onterminal?: (path: string) => void
+    terminalLabel?: string
     tools?: Snippet
     overlay?: Snippet
     marks?: FolderMarks
@@ -213,7 +215,7 @@
     if (!marks) return
     app.openMenu(e, [
       { label: 'Open', action: () => navigate(fav) },
-      ...(onterminal ? [{ label: 'Open terminal here', action: () => onterminal(fav) }] : []),
+      ...(onterminal ? [{ label: terminalLabel, action: () => onterminal(fav) }] : []),
       { label: 'Copy path', action: () => navigator.clipboard.writeText(fav) },
       'sep',
       ...markItems([fav])
@@ -226,7 +228,7 @@
     const items: MenuItem[] = []
     if (isDirLike(entry) && targets.length === 1) items.push({ label: 'Open', action: () => navigate(entry.path) })
     if (onterminal && isDirLike(entry) && targets.length === 1) {
-      items.push({ label: 'Open terminal here', action: () => onterminal(entry.path) })
+      items.push({ label: terminalLabel, action: () => onterminal(entry.path) })
     }
     if (onedit && entry.kind === 'file' && targets.length === 1) {
       items.push({ label: 'Edit in editor', action: () => onedit(entry) })
@@ -251,7 +253,7 @@
     if (e.target !== e.currentTarget) return
     selected = []
     app.openMenu(e, [
-      ...(onterminal ? [{ label: 'Open terminal here', action: () => onterminal(path) }] : []),
+      ...(onterminal ? [{ label: terminalLabel, action: () => onterminal(path) }] : []),
       { label: 'New folder', action: mkdir },
       { label: 'Refresh', action: refresh },
       { label: 'Copy path', action: () => navigator.clipboard.writeText(path) },
@@ -447,6 +449,7 @@
     border: 1px solid var(--border-weak);
     border-radius: var(--radius-lg);
     overflow: hidden;
+    container-type: inline-size;
   }
   .pane.dropping {
     border-color: var(--text-strong);
@@ -518,6 +521,18 @@
   .cols.remote,
   .row.remote {
     grid-template-columns: minmax(0, 1fr) 80px 130px 84px;
+  }
+  @container (max-width: 460px) {
+    .cols,
+    .row,
+    .cols.remote,
+    .row.remote {
+      grid-template-columns: minmax(0, 1fr) 72px;
+    }
+    .cols > :nth-child(n + 3),
+    .row > :nth-child(n + 3) {
+      display: none;
+    }
   }
   .cols {
     padding: 4px 14px;

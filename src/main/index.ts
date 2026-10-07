@@ -147,6 +147,7 @@ function createWindow(vault: Vault): BrowserWindow {
   win.on('focus', () => services?.sync.poke())
   win.on('closed', () => {
     services?.terminals.closeAll()
+    void services?.local.closeAll()
     services?.sftp.closeAll()
     services?.docker.closeAll()
     services?.updater.dispose()
@@ -183,7 +184,12 @@ if (!app.requestSingleInstanceLock()) {
     powerMonitor.on('suspend', lockWithSystem)
   })
 
-  app.on('will-quit', () => {
+  app.on('will-quit', (e) => {
+    if (services?.local.busy) {
+      e.preventDefault()
+      void services.local.closeAll().then(() => app.quit())
+      return
+    }
     services?.sftp.editor.disposeAll()
     services?.rdp.dispose()
   })

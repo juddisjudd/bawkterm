@@ -96,8 +96,19 @@ const api: BawkApi = {
     onData: (cb) => on('ssh:data', cb),
     onStatus: (cb) => on('ssh:status', cb)
   },
+  shell: {
+    list: () => invoke('pty:list'),
+    open: (sessionId, shell, cols, rows) => invoke('pty:open', sessionId, shell, cols, rows),
+    write: (sessionId, data) => ipcRenderer.send('pty:write', sessionId, data),
+    resize: (sessionId, cols, rows) => ipcRenderer.send('pty:resize', sessionId, cols, rows),
+    ack: (sessionId, bytes) => ipcRenderer.send('pty:ack', sessionId, bytes),
+    close: (sessionId) => invoke('pty:close', sessionId),
+    onData: (cb) => on('pty:data', cb),
+    onStatus: (cb) => on('pty:status', cb)
+  },
   sftp: {
     open: (sessionId, target) => invoke('sftp:open', sessionId, target),
+    attach: (sessionId, terminalId) => invoke('sftp:attach', sessionId, terminalId),
     list: (sessionId, path) => invoke('sftp:list', sessionId, path),
     realpath: (sessionId, path) => invoke('sftp:realpath', sessionId, path),
     mkdir: (sessionId, path) => invoke('sftp:mkdir', sessionId, path),
@@ -130,11 +141,13 @@ const api: BawkApi = {
   },
   local: {
     home: () => invoke('local:home'),
+    downloads: () => invoke('local:downloads'),
+    pickFiles: () => invoke('local:pickFiles'),
     list: (path) => invoke('local:list', path),
     mkdir: (path) => invoke('local:mkdir', path),
     rename: (from, to) => invoke('local:rename', from, to),
     trash: (paths) => invoke('local:trash', paths),
-    open: (path) => invoke('local:open', path)
+    open: (path) => invoke('shell:open', path)
   },
   prompts: {
     onRequest: (cb) => on('prompt:request', cb),

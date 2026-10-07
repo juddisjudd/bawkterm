@@ -217,6 +217,7 @@ export function cleanSettings(v: unknown): Partial<Settings> {
   set('keepAliveSec', (x) => int(x, 'keepalive interval', 0, 600))
   set('editorCommand', (x) => line(x, 'editor', 1024))
   set('terminalTheme', (x) => line(x, 'terminal theme', 64))
+  set('localShell', (x) => line(x, 'local shell', 256))
   set('customThemes', (x) => list(x, 'imported themes', 50, cleanTheme))
   for (const key of [
     'cursorBlink',
@@ -236,7 +237,7 @@ export function cleanSettings(v: unknown): Partial<Settings> {
   return out
 }
 
-const TAB_KINDS = ['ssh', 'sftp', 'docker'] as const
+const TAB_KINDS = ['ssh', 'sftp', 'docker', 'local'] as const
 const PANE_DIRS: readonly PaneDir[] = ['row', 'column']
 
 function cleanPanes(v: unknown, depth = 0): PaneTree<number> {
@@ -256,18 +257,21 @@ export function cleanLocalState(v: unknown): LocalState {
   return {
     tabs: list(s.tabs ?? [], 'tabs', 100, (t): SavedTab => {
       const tab = obj(t, 'tab')
+      const kind = oneOf(tab.kind, 'tab kind', TAB_KINDS)
       return {
-        kind: oneOf(tab.kind, 'tab kind', TAB_KINDS),
-        target: cleanTarget(tab.target),
+        kind,
+        target: kind === 'local' ? { local: line(obj(tab.target, 'tab target').local, 'local shell', 256) } : cleanTarget(tab.target),
         title: text(tab.title ?? '', 'tab title', 512),
         ...(tab.command !== undefined ? { command: text(tab.command, 'tab command') } : {}),
         ...(tab.label !== undefined ? { label: line(tab.label, 'tab name', 128) } : {}),
-        ...(tab.color !== undefined ? { color: oneOf(tab.color, 'tab color', FOLDER_COLORS) } : {})
+        ...(tab.color !== undefined ? { color: oneOf(tab.color, 'tab color', FOLDER_COLORS) } : {}),
+        ...(tab.files === true ? { files: true } : {})
       }
     }),
     active: int(s.active ?? -1, 'active tab', -1, 100),
     splits: list(s.splits ?? [], 'splits', 50, (p) => cleanPanes(p)),
-    lastPaths: record(s.lastPaths ?? {}, 'folders', 1000, (k) => line(k, 'folder key', 512), (p) => path(p))
+    lastPaths: record(s.lastPaths ?? {}, 'folders', 1000, (k) => line(k, 'folder key', 512), (p) => path(p)),
+    ...(s.filesWidth !== undefined ? { filesWidth: int(s.filesWidth, 'files panel width', 200, 4000) } : {})
   }
 }
 

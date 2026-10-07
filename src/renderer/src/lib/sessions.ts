@@ -9,6 +9,11 @@ const handlers = new Map<string, DataHandler>()
 const terminals = new Map<string, TerminalHandle>()
 
 window.api.ssh.onData((sessionId, data) => handlers.get(sessionId)?.(data))
+window.api.shell.onData((sessionId, data) => handlers.get(sessionId)?.(data))
+
+// SSH and local terminals take the same calls, so a view only needs to know which one a tab is
+export const terminalApi = (kind: string): Pick<typeof window.api.ssh, 'write' | 'resize' | 'ack' | 'close'> =>
+  kind === 'local' ? window.api.shell : window.api.ssh
 
 export function onSessionData(sessionId: string, handler: DataHandler): () => void {
   handlers.set(sessionId, handler)
