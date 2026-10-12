@@ -27,17 +27,21 @@ function probe(address: string, port: number): Promise<HostReach> {
   })
 }
 
+const serverOf = (h: Host): string => `${h.address.toLowerCase()}:${h.port}`
+
 // only saved hosts are checked, so the window cannot point this at arbitrary addresses
 export async function probeHosts(hosts: Host[]): Promise<Record<string, HostReach>> {
   const targets = hosts.filter((h) => h.address && !h.jumpHostId)
-  const out: Record<string, HostReach> = {}
+  // one connection per server however many hosts name it: sshd blocks an address that keeps connecting without logging in
+  const servers = [...new Map(targets.map((h) => [serverOf(h), h])).values()]
+  const reach = new Map<string, HostReach>()
   let next = 0
   const worker = async (): Promise<void> => {
-    while (next < targets.length) {
-      const host = targets[next++]
-      out[host.id] = await probe(host.address, host.port)
+    while (next < servers.length) {
+      const host = servers[next++]
+      reach.set(serverOf(host), await probe(host.address, host.port))
     }
   }
-  await Promise.all(Array.from({ length: Math.min(AT_ONCE, targets.length) }, worker))
-  return out
+  await Promise.all(Array.from({ length: Math.min(AT_ONCE, servers.length) }, worker))
+  return Object.fromEntries(targets.map((h) => [h.id, reach.get(serverOf(h))!]))
 }

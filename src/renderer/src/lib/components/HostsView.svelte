@@ -32,11 +32,13 @@
 
   let reach = $state.raw<Record<string, HostReach>>({})
   const probeKey = $derived(vault.hosts.map((h) => `${h.id}:${h.address}:${h.port}:${h.jumpHostId}`).join(','))
+  // every vault change replaces the settings object, which must not start another round of checks
+  const checkHosts = $derived(app.settings.checkHosts)
 
   // checks run only while this page is in front, and again each minute
   $effect(() => {
     void probeKey
-    if (!app.settings.checkHosts || app.active !== 'home') return
+    if (!checkHosts || app.active !== 'home') return
     const run = (): void => {
       if (document.hidden) return
       window.api.hosts.probe().then((r) => (reach = r), () => {})
@@ -192,7 +194,7 @@
             <span class="marker">{h.kind === 'rdp' ? '[#]' : '[>]'}</span>
             <span class="label"
               >{#if reach[h.id]}<span class={['dot', reach[h.id].up ? 'connected' : 'down']} title={reachTitle(reach[h.id])}
-                ></span>{:else if app.settings.checkHosts}<span class="dot unchecked"></span>{/if}{h.label || h.address}</span
+                ></span>{:else if checkHosts}<span class="dot unchecked"></span>{/if}{h.label || h.address}</span
             >
             <span class="addr">{userAt(h)}</span>
             <span class="tags">
