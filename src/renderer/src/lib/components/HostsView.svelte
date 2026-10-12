@@ -3,9 +3,10 @@
   import Plus from '@lucide/svelte/icons/plus'
   import Pencil from '@lucide/svelte/icons/pencil'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
-  import type { AdhocTarget, Host, HostReach } from '@shared/types'
+  import type { Host, HostReach } from '@shared/types'
   import { app, type MenuItem } from '$lib/state.svelte'
   import { ago } from '$lib/format'
+  import { parseQuick, quickTarget } from '$lib/quick'
   import { openExportMenu, openImportMenu } from '$lib/transfer'
   import PageHeader from './PageHeader.svelte'
   import HostEditor from './HostEditor.svelte'
@@ -68,23 +69,24 @@
     return `${user ? `${user}@` : ''}${h.address}${h.port !== defaultPort ? `:${h.port}` : ''}`
   }
 
-  function parseQuick(text: string, defaultPort: number): AdhocTarget | null {
-    const m = text.trim().match(/^(?:ssh\s+)?(?:([^@\s]+)@)?([^\s:@]+)(?::(\d+))?(?:\s+-p\s*(\d+))?$/)
-    if (!m) return null
-    return { username: m[1] ?? '', address: m[2], port: Number(m[4] ?? m[3] ?? defaultPort) }
-  }
+  const quickHint = $derived(
+    quickMode === 'rdp' ? 'user@host:port' : `[-i key] [-J jump] [-A] user@host:port${quickMode === 'ssh' ? ' [command]' : ''}`
+  )
 
   function connectQuick(e: SubmitEvent): void {
     e.preventDefault()
-    const target = parseQuick(quick, quickMode === 'rdp' ? 3389 : 22)
-    if (!target) {
-      app.toast('Use the form user@host or user@host:port', 'error')
-      return
+    try {
+      const q = parseQuick(quick)
+      if (quickMode === 'rdp' && (q.key || q.jump || q.agentForward)) throw new Error('Remote Desktop takes user@host:port only')
+      if (q.command && quickMode !== 'ssh') throw new Error('A command to run only works in ssh mode')
+      const target = quickTarget(q, vault, quickMode === 'rdp' ? 'rdp' : 'ssh')
+      const title = app.targetTitle(target, q.username ? `${q.username}@${q.address}` : q.address)
+      if (quickMode === 'rdp') void app.launchRdp(target, title)
+      else app.openTab(quickMode, target, title, q.command || undefined)
+      quick = ''
+    } catch (err) {
+      app.fail(err)
     }
-    const title = target.username ? `${target.username}@${target.address}` : target.address
-    if (quickMode === 'rdp') void app.launchRdp({ adhoc: target }, title)
-    else app.openTab(quickMode, { adhoc: target }, title)
-    quick = ''
   }
 
   async function remove(h: Host): Promise<void> {
@@ -151,7 +153,7 @@
     <div class="line">
       <span class="dollar">$</span>
       <span class="cmd">{quickMode}</span>
-      <input bind:value={quick} placeholder="user@host:port" spellcheck="false" autocomplete="off" />
+      <input bind:value={quick} placeholder={quickHint} spellcheck="false" autocomplete="off" />
       <button type="submit" class="btn small strong" disabled={!quick.trim()}>connect</button>
     </div>
   </form>

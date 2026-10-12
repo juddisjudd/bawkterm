@@ -166,12 +166,23 @@ export function cleanKey(v: unknown): SshKey {
   }
 }
 
-export function cleanTarget(v: unknown): ConnectTarget {
+const MAX_TYPED_JUMPS = 5
+
+export function cleanTarget(v: unknown, jumps = MAX_TYPED_JUMPS): ConnectTarget {
   const t = obj(v, 'connection target')
   if ('hostId' in t) return { hostId: id(t.hostId, 'host id') }
   const a = obj(t.adhoc, 'connection target')
+  if (a.jump !== undefined && jumps < 1) fail('jump host')
   return {
-    adhoc: { address: address(a.address), port: int(a.port, 'port', 1, 65535), username: line(a.username ?? '', 'username', 256) }
+    adhoc: {
+      address: address(a.address),
+      port: int(a.port, 'port', 1, 65535),
+      username: line(a.username ?? '', 'username', 256),
+      ...(a.keyId !== undefined ? { keyId: id(a.keyId, 'key') } : {}),
+      ...(a.keyFile !== undefined ? { keyFile: path(a.keyFile, 'key file') } : {}),
+      ...(a.agentForward === true ? { agentForward: true } : {}),
+      ...(a.jump !== undefined ? { jump: cleanTarget(a.jump, jumps - 1) } : {})
+    }
   }
 }
 

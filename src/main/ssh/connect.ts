@@ -10,7 +10,8 @@ import {
 } from 'ssh2'
 import { hostKeyId } from '@shared/defaults'
 import type { ConnectTarget, PromptRequest, PromptResponse, SshKey } from '@shared/types'
-import { isEncryptedKeyError, parsePrivateKey, parsePublicBlob } from '../keys'
+import { expandHome } from '../import/text'
+import { isEncryptedKeyError, parsePrivateKey, parsePublicBlob, readKeyFile, sameKey } from '../keys'
 import { isPpk, ppkToOpenSsh } from '../ppk'
 import { AllAgents, ForwardedAgent, agentPaths } from './agent'
 import type { Vault } from '../vault'
@@ -41,7 +42,7 @@ interface Resolved {
   key?: SshKey
   useAgent: boolean
   agentForward: boolean
-  jumpHostId: string
+  jump?: ConnectTarget
 }
 
 const MAX_HOPS = 5
@@ -63,11 +64,24 @@ export class CancelledError extends Error {
   }
 }
 
-function resolveTarget(target: ConnectTarget, vault: Vault): Resolved {
+// a key named by its file serves this connection only, unless the keychain already holds it
+async function keyFromFile(file: string, vault: Vault): Promise<SshKey> {
+  const path = expandHome(file)
+  try {
+    const fields = await readKeyFile(path)
+    return vault.get().keys.find((k) => sameKey(k, fields)) ?? { ...fields, id: '', createdAt: 0, updatedAt: 0 }
+  } catch (err) {
+    const reason = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'file not found' : (err as Error).message
+    throw new Error(`Key ${path} cannot be used: ${reason}`)
+  }
+}
+
+async function resolveTarget(target: ConnectTarget, vault: Vault): Promise<Resolved> {
   const data = vault.get()
   if ('adhoc' in target) {
-    const { address, port, username } = target.adhoc
-    return { label: address, address, port, username, password: '', useAgent: true, agentForward: false, jumpHostId: '' }
+    const { address, port, username, keyId, keyFile, agentForward = false, jump } = target.adhoc
+    const key = keyFile ? await keyFromFile(keyFile, vault) : data.keys.find((k) => k.id === keyId)
+    return { label: address, address, port, username, password: '', key, useAgent: true, agentForward, jump }
   }
   const host = data.hosts.find((h) => h.id === target.hostId)
   if (!host) throw new Error('Host not found in vault')
@@ -83,7 +97,7 @@ function resolveTarget(target: ConnectTarget, vault: Vault): Resolved {
     key: keyId ? data.keys.find((k) => k.id === keyId) : undefined,
     useAgent: host.useAgent,
     agentForward: host.agentForward,
-    jumpHostId: host.jumpHostId
+    jump: host.jumpHostId ? { hostId: host.jumpHostId } : undefined
   }
 }
 
@@ -176,7 +190,7 @@ async function unlockKey(r: Resolved, ctx: ConnectContext): Promise<ParsedKey | 
       message: attempt ? `Wrong passphrase. Try again for "${key.label}".` : `Enter the passphrase for "${key.label}".`,
       fields: [{ name: 'passphrase', label: 'Passphrase', secret: true }],
       confirmLabel: 'Unlock',
-      checkbox: { name: 'save', label: 'Save passphrase in vault' }
+      checkbox: key.id ? { name: 'save', label: 'Save passphrase in vault' } : undefined
     })
     if (!answer) throw new CancelledError()
     const parsed = parsePrivateKey(key.privateKey, answer.values.passphrase)
@@ -420,7 +434,7 @@ async function askUsername(r: Resolved, ctx: ConnectContext): Promise<void> {
 }
 
 export async function connect(target: ConnectTarget, ctx: ConnectContext, seen: string[] = []): Promise<Connection> {
-  const r = resolveTarget(target, ctx.vault)
+  const r = await resolveTarget(target, ctx.vault)
   if (r.hostId) {
     if (seen.includes(r.hostId)) throw new Error('Jump host chain loops back on itself')
     if (seen.length >= MAX_HOPS) throw new Error(`Jump host chain is longer than ${MAX_HOPS} hops`)
@@ -429,8 +443,8 @@ export async function connect(target: ConnectTarget, ctx: ConnectContext, seen: 
 
   let jump: Connection | undefined
   let sock: Duplex | undefined
-  if (r.jumpHostId) {
-    jump = await connect({ hostId: r.jumpHostId }, ctx, r.hostId ? [...seen, r.hostId] : seen)
+  if (r.jump) {
+    jump = await connect(r.jump, ctx, r.hostId ? [...seen, r.hostId] : seen)
     ctx.onProgress?.(`Tunnelling through ${jump.label}`)
     try {
       sock = await forward(jump.client, r.address, r.port)

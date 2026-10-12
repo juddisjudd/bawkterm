@@ -277,6 +277,11 @@ export interface AdhocTarget {
   address: string
   port: number
   username: string
+  keyId?: string
+  // a private key file on this computer, used without adding it to the keychain
+  keyFile?: string
+  agentForward?: boolean
+  jump?: ConnectTarget
 }
 
 export type ConnectTarget = { hostId: string } | { adhoc: AdhocTarget }

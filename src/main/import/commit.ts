@@ -1,8 +1,6 @@
-import { promises as fsp } from 'node:fs'
-import { basename } from 'node:path'
 import { blankHost } from '@shared/defaults'
 import type { Host, ImportSummary, SshKey } from '@shared/types'
-import { describeKey } from '../keys'
+import { readKeyFile, sameKey } from '../keys'
 import { cleanHost } from '../validate'
 import type { Vault } from '../vault'
 
@@ -12,6 +10,8 @@ export interface Endpoint {
   username: string
   password?: string
   keyFile?: string
+  // set when the source tries agents whatever else the host has
+  useAgent?: boolean
 }
 
 export interface Found extends Endpoint {
@@ -29,8 +29,6 @@ export interface Scan {
   skipped: string[]
 }
 
-const MAX_KEY_FILE = 64 * 1024
-
 const sameEndpoint = (h: Pick<Host, 'kind' | 'address' | 'port' | 'username'>, e: Endpoint): boolean =>
   h.kind === 'ssh' && h.address.toLowerCase() === e.address.toLowerCase() && h.port === e.port && h.username === e.username
 
@@ -47,16 +45,12 @@ export async function commit(vault: Vault, scan: Scan): Promise<ImportSummary> {
     if (known !== undefined) return known
     let keyId = ''
     try {
-      if ((await fsp.stat(file)).size > MAX_KEY_FILE) throw new Error('the file is too large to be a private key')
-      const fields = describeKey({ label: '', privateKey: await fsp.readFile(file, 'utf8'), passphrase: '' }, true)
-      const same = [...existing.keys, ...keys].find(
-        (k) => (fields.fingerprint && k.fingerprint === fields.fingerprint) || k.privateKey === fields.privateKey
-      )
+      const fields = await readKeyFile(file)
+      const same = [...existing.keys, ...keys].find((k) => sameKey(k, fields))
       if (same) keyId = same.id
       else {
         const now = Date.now()
-        const label = fields.type === 'encrypted' ? basename(file) : fields.label
-        keys.push({ ...fields, label, id: vault.newId(), createdAt: now, updatedAt: now })
+        keys.push({ ...fields, id: vault.newId(), createdAt: now, updatedAt: now })
         keyId = keys[keys.length - 1].id
       }
     } catch (err) {
@@ -80,7 +74,7 @@ export async function commit(vault: Vault, scan: Scan): Promise<ImportSummary> {
       password: e.password ?? '',
       group: group.slice(0, 128),
       keyId,
-      useAgent: !keyId && !e.password
+      useAgent: e.useAgent ?? (!keyId && !e.password)
     })
   }
 
@@ -89,12 +83,17 @@ export async function commit(vault: Vault, scan: Scan): Promise<ImportSummary> {
   const made = new Map<Found, Host>()
   // a skipped duplicate still answers for its label, so jumps that name it reach the host already there
   const byLabel = new Map<string, Host>()
+  const rekeyed = new Map<string, string>()
   for (const f of scan.hosts) {
     const stored = existing.hosts.find((h) => sameEndpoint(h, f))
     const match = stored ?? hosts.find((h) => sameEndpoint(h, f))
     if (match) {
       byLabel.set(f.label, match)
-      summary.skipped.push(`${f.label}: ${stored ? 'already in the vault' : 'same server as another entry in this import'}`)
+      // a host saved without the key its source names gets that key, so importing again repairs it
+      const keyId = stored && !stored.keyId && !stored.identityId && f.keyFile ? await loadKey(f.keyFile, f.label) : ''
+      if (stored && keyId) rekeyed.set(stored.id, keyId)
+      const why = keyId ? 'already in the vault, its key was added' : stored ? 'already in the vault' : 'same server as another entry in this import'
+      summary.skipped.push(`${f.label}: ${why}`)
       continue
     }
     try {
@@ -128,9 +127,15 @@ export async function commit(vault: Vault, scan: Scan): Promise<ImportSummary> {
     else if (!through && 'label' in jump) summary.skipped.push(`${f.label}: jump host "${jump.label}" not found`)
   }
 
-  if (hosts.length || keys.length) {
+  if (hosts.length || keys.length || rekeyed.size) {
     await vault.mutate((d) => {
       d.keys.push(...keys)
+      for (const h of d.hosts) {
+        const keyId = rekeyed.get(h.id)
+        if (!keyId) continue
+        h.keyId = keyId
+        h.updatedAt = Date.now()
+      }
       d.hosts.push(...hosts)
     })
   }

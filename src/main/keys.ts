@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { promises as fsp } from 'node:fs'
+import { basename } from 'node:path'
 import { utils, type ParsedKey } from 'ssh2'
 import type { KeyGenRequest, KeyImportRequest, SshKey } from '@shared/types'
 import { isPpk, ppkPublic, ppkToOpenSsh } from './ppk'
@@ -30,7 +32,9 @@ export function parsePublicBlob(blob: Buffer): string {
   return (Array.isArray(parsed) ? parsed[0] : parsed)?.type ?? 'unknown'
 }
 
-type KeyFields = Omit<SshKey, 'id' | 'createdAt' | 'updatedAt'>
+export type KeyFields = Omit<SshKey, 'id' | 'createdAt' | 'updatedAt'>
+
+const MAX_KEY_FILE = 64 * 1024
 
 const lockedMessage = (passphrase: string): string =>
   passphrase ? 'Wrong passphrase for this key' : 'This key is encrypted. Enter its passphrase.'
@@ -89,6 +93,15 @@ export function describeKey(req: KeyImportRequest, allowLocked = false): KeyFiel
     encrypted
   }
 }
+
+export async function readKeyFile(file: string): Promise<KeyFields> {
+  if ((await fsp.stat(file)).size > MAX_KEY_FILE) throw new Error('the file is too large to be a private key')
+  const fields = describeKey({ label: '', privateKey: await fsp.readFile(file, 'utf8'), passphrase: '' }, true)
+  return fields.type === 'encrypted' ? { ...fields, label: basename(file) } : fields
+}
+
+export const sameKey = (a: KeyFields, b: KeyFields): boolean =>
+  (!!b.fingerprint && a.fingerprint === b.fingerprint) || a.privateKey === b.privateKey
 
 export function generateKey(req: KeyGenRequest): KeyImportRequest {
   const opts = {
