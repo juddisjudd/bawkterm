@@ -45,7 +45,7 @@
     "@resvg/resvg-js": "2.6.2",
     "@sveltejs/vite-plugin-svelte": "6.2.4",
     "@tsconfig/svelte": "5.0.8",
-    "@types/node": "24.19.0",
+    "@types/node": "26.6.5",
     "@types/ssh2": "1.15.6",
     "@xterm/addon-clipboard": "0.2.0",
     "@xterm/addon-fit": "0.11.0",
