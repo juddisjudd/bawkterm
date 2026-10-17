@@ -11,7 +11,7 @@
   import { favoriteLabels, tint, type FolderMarks } from '$lib/folders'
   import { app, type MenuItem } from '$lib/state.svelte'
   import { bytes, date, mode, visibleName } from '$lib/format'
-  import type { PathOps } from '$lib/paths'
+  import { isDatabase, type PathOps } from '$lib/paths'
   import { mod } from '$lib/keys'
 
   type Side = 'local' | 'remote'
@@ -231,7 +231,7 @@
       items.push({ label: terminalLabel, action: () => onterminal(entry.path) })
     }
     if (onedit && entry.kind === 'file' && targets.length === 1) {
-      items.push({ label: 'Edit in editor', action: () => onedit(entry) })
+      items.push({ label: isDatabase(entry.name) ? 'Open database' : 'Edit in editor', action: () => onedit(entry) })
     }
     if (onopen && !isDirLike(entry) && targets.length === 1) {
       items.push({ label: 'Open with default app', action: () => onopen(entry) })

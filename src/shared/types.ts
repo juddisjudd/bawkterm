@@ -9,6 +9,66 @@ export interface TextFile {
 
 export type SaveResult = { conflict: true } | { conflict: false; mtime: number; size: number }
 
+// integers arrive as bigint so large ids keep every digit; blobs and long text only as a preview
+export type DbCell = null | bigint | number | string | { blob: number } | { text: string; length: number }
+
+export type DbValue = null | bigint | number | string
+
+// identifies one row: [rowid], or the primary key values of a WITHOUT ROWID table
+export type DbKey = (DbValue | Uint8Array)[]
+
+export interface DbChange {
+  column: string
+  value: DbValue
+}
+
+export interface DbTable {
+  name: string
+  kind: 'table' | 'view'
+  rows: number | null
+  editable: boolean
+}
+
+export interface DbColumn {
+  name: string
+  type: string
+  pk: boolean
+  notNull: boolean
+  default: string | null
+  generated: boolean
+}
+
+export interface DbPageRequest {
+  table: string
+  offset: number
+  limit: number
+  sort: { column: string; desc: boolean } | null
+  filter: string
+}
+
+export interface DbPage {
+  columns: DbColumn[]
+  rows: { key: DbKey | null; cells: DbCell[] }[]
+  total: number
+  editable: boolean
+}
+
+export interface DbInfo {
+  tables: DbTable[]
+  size: number
+  readOnly: string | null
+}
+
+export interface DbResult {
+  columns: string[]
+  rows: DbCell[][]
+  more: boolean
+  statements: number
+  changes: number
+  dirty: boolean
+  error: string | null
+}
+
 export interface EditorChoice {
   name: string
   command: string

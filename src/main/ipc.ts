@@ -37,6 +37,11 @@ import {
   cleanSettings,
   cleanSnippet,
   cleanTarget,
+  dbChanges,
+  dbKey,
+  dbKeys,
+  dbName,
+  dbPageRequest,
   dockerAction,
   dockerCommand,
   id,
@@ -459,6 +464,19 @@ export function registerIpc(win: BrowserWindow, vault: Vault, origins: string[])
   })
   handle('sftp:edit', (sid, p) => sftp.editor.open(id(sid), path(p)))
   handle('sftp:editStop', (sid, p) => sftp.editor.stop(id(sid), path(p)))
+
+  handle('db:load', (dbId, sid, p) => sftp.databases.load(id(dbId), id(sid), path(p)))
+  handle('db:tables', (dbId) => sftp.databases.tables(id(dbId)))
+  handle('db:page', (dbId, req) => sftp.databases.page(id(dbId), dbPageRequest(req)))
+  handle('db:row', (dbId, table, key) => sftp.databases.row(id(dbId), dbName(table, 'table'), dbKey(key)))
+  handle('db:update', (dbId, table, key, changes) =>
+    sftp.databases.update(id(dbId), dbName(table, 'table'), dbKey(key), dbChanges(changes))
+  )
+  handle('db:insert', (dbId, table, changes) => sftp.databases.insert(id(dbId), dbName(table, 'table'), dbChanges(changes)))
+  handle('db:remove', (dbId, table, keys) => sftp.databases.remove(id(dbId), dbName(table, 'table'), dbKeys(keys)))
+  handle('db:query', (dbId, sql) => sftp.databases.query(id(dbId), text(sql, 'SQL', 16 * 1024 * 1024)))
+  handle('db:save', (dbId, sid, force) => sftp.databases.save(id(dbId), id(sid), bool(force, 'save')))
+  handle('db:close', (dbId) => sftp.databases.close(id(dbId)))
 
   handle('rdp:launch', (target) => rdp.launch(cleanTarget(target)))
 

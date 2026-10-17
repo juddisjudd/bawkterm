@@ -2,7 +2,7 @@
   import X from '@lucide/svelte/icons/x'
   import RadioTower from '@lucide/svelte/icons/radio-tower'
   import FolderOpen from '@lucide/svelte/icons/folder-open'
-  import { app, isTerminal, tabName, type Split, type Tab } from '$lib/state.svelte'
+  import { app, isTerminal, tabKind, tabName, type Split, type Tab } from '$lib/state.svelte'
   import { layout, leaves, type Divider, type Rect } from '$lib/panes'
   import { tabMenu } from '$lib/tab-menu.svelte'
   import { tint } from '$lib/folders'
@@ -13,6 +13,7 @@
   import SftpView from './SftpView.svelte'
   import DockerView from './DockerView.svelte'
   const loadEditor = () => import('./FileEditor.svelte')
+  const loadDatabase = () => import('./DatabaseView.svelte')
   import Palette from './Palette.svelte'
 
   let main = $state<HTMLElement>()
@@ -76,7 +77,7 @@
     ondblclick={() => app.renameTab(tab.id)}
     oncontextmenu={(e) => app.openMenu(e, tabMenu(tab, 'pane'))}
   >
-    <span class="kind">{tab.kind}</span>
+    <span class="kind">{tabKind(tab)}</span>
     {#if tab.status !== 'connected'}<span class={['dot', tab.status]} title={tab.status}></span>{/if}
     <span class="name" title={tab.message}>{tabName(tab)}</span>
     {#if tab.bell}<span class="bell" title="bell">!</span>{/if}
@@ -130,6 +131,10 @@
             <TerminalView {tab} active={app.active === tab.id} />
           {:else if tab.kind === 'sftp'}
             <SftpView {tab} />
+          {:else if tab.edit?.sqlite}
+            {#await loadDatabase() then { default: DatabaseView }}
+              <DatabaseView {tab} active={app.active === tab.id} />
+            {/await}
           {:else if tab.kind === 'edit'}
             {#await loadEditor() then { default: FileEditor }}
               <FileEditor {tab} active={app.active === tab.id} />

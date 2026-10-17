@@ -2,6 +2,10 @@ import { FOLDER_COLORS } from '@shared/defaults'
 import type {
   ConnectTarget,
   CustomTheme,
+  DbChange,
+  DbKey,
+  DbPageRequest,
+  DbValue,
   DockerAction,
   DockerCommand,
   FolderColor,
@@ -334,3 +338,36 @@ export function cleanPromptResponse(v: unknown): PromptResponse | null {
 export const dockerAction = (v: unknown): DockerAction => oneOf(v, 'container action', ['start', 'stop', 'restart'])
 export const dockerCommand = (v: unknown): DockerCommand => oneOf(v, 'container command', ['shell', 'logs'])
 export const paths = (v: unknown): string[] => list(v, 'paths', 10_000, (p) => path(p))
+
+const INT64 = 2n ** 63n
+const DB_TEXT_MAX = 64 * 1024 * 1024
+
+export function dbValue(v: unknown): DbValue {
+  if (v === null) return null
+  if (typeof v === 'string') return text(v, 'value', DB_TEXT_MAX)
+  if (typeof v === 'number') return num(v, 'value', -Number.MAX_VALUE, Number.MAX_VALUE)
+  if (typeof v === 'bigint' && v >= -INT64 && v < INT64) return v
+  return fail('value')
+}
+
+export const dbName = (v: unknown, what: string): string => text(v, what, 1024)
+export const dbKey = (v: unknown): DbKey => list(v, 'row', 64, (x) => (x instanceof Uint8Array ? x : dbValue(x)))
+export const dbKeys = (v: unknown): DbKey[] => list(v, 'rows', 100_000, dbKey)
+
+export const dbChanges = (v: unknown): DbChange[] =>
+  list(v, 'changes', 2000, (x) => {
+    const c = obj(x, 'change')
+    return { column: dbName(c.column, 'column'), value: dbValue(c.value) }
+  })
+
+export function dbPageRequest(v: unknown): DbPageRequest {
+  const r = obj(v, 'page')
+  const sort = r.sort === null ? null : obj(r.sort, 'sort')
+  return {
+    table: dbName(r.table, 'table'),
+    offset: int(r.offset, 'offset', 0, 2 ** 53 - 1),
+    limit: int(r.limit, 'limit', 1, 1000),
+    sort: sort && { column: dbName(sort.column, 'sort'), desc: bool(sort.desc, 'sort') },
+    filter: text(r.filter, 'filter', 1024)
+  }
+}

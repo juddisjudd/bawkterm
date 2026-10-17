@@ -3,6 +3,14 @@ import type {
   SaveResult,
   TextFile,
   ContainerInfo,
+  DbCell,
+  DbChange,
+  DbInfo,
+  DbKey,
+  DbPage,
+  DbPageRequest,
+  DbResult,
+  DbTable,
   ContainerStats,
   EditInfo,
   DockerAction,
@@ -163,6 +171,19 @@ export interface BawkApi {
     edit(sessionId: string, remotePath: string): Promise<void>
     editStop(sessionId: string, remotePath: string): Promise<void>
     onEdit(cb: (info: EditInfo) => void): Unsubscribe
+  }
+  // a SQLite file from a server, held in memory until it is saved back
+  db: {
+    load(dbId: string, sessionId: string, path: string): Promise<DbInfo>
+    tables(dbId: string): Promise<DbTable[]>
+    page(dbId: string, req: DbPageRequest): Promise<DbPage>
+    row(dbId: string, table: string, key: DbKey): Promise<DbCell[]>
+    update(dbId: string, table: string, key: DbKey, changes: DbChange[]): Promise<boolean>
+    insert(dbId: string, table: string, changes: DbChange[]): Promise<boolean>
+    remove(dbId: string, table: string, keys: DbKey[]): Promise<boolean>
+    query(dbId: string, sql: string): Promise<DbResult>
+    save(dbId: string, sessionId: string, force: boolean): Promise<SaveResult>
+    close(dbId: string): Promise<void>
   }
   rdp: {
     launch(target: ConnectTarget): Promise<void>

@@ -128,6 +128,18 @@ const api: BawkApi = {
     editStop: (sessionId, remotePath) => invoke('sftp:editStop', sessionId, remotePath),
     onEdit: (cb) => on('sftp:edit', cb)
   },
+  db: {
+    load: (dbId, sessionId, path) => invoke('db:load', dbId, sessionId, path),
+    tables: (dbId) => invoke('db:tables', dbId),
+    page: (dbId, req) => invoke('db:page', dbId, req),
+    row: (dbId, table, key) => invoke('db:row', dbId, table, key),
+    update: (dbId, table, key, changes) => invoke('db:update', dbId, table, key, changes),
+    insert: (dbId, table, changes) => invoke('db:insert', dbId, table, changes),
+    remove: (dbId, table, keys) => invoke('db:remove', dbId, table, keys),
+    query: (dbId, sql) => invoke('db:query', dbId, sql),
+    save: (dbId, sessionId, force) => invoke('db:save', dbId, sessionId, force),
+    close: (dbId) => invoke('db:close', dbId)
+  },
   rdp: {
     launch: (target) => invoke('rdp:launch', target)
   },

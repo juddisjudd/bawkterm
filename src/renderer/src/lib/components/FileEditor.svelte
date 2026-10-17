@@ -192,6 +192,9 @@
     <div class="state">
       <p class="error selectable">{error}</p>
       <div class="actions">
+        {#if /SQLite database/.test(error)}
+          <button type="button" class="btn small strong" onclick={() => (tab.edit = { ...tab.edit!, sqlite: true })}>Open as database</button>
+        {/if}
         <button type="button" class="btn small" onclick={load}>Try again</button>
         <button type="button" class="btn small ghost" onclick={() => app.closeTab(tab.id)}>Close tab</button>
       </div>

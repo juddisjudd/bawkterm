@@ -4,7 +4,7 @@
   import RadioTower from '@lucide/svelte/icons/radio-tower'
   import FolderOpen from '@lucide/svelte/icons/folder-open'
   import type { SessionStatus } from '@shared/types'
-  import { app, tabName, type StripEntry, type Tab } from '$lib/state.svelte'
+  import { app, tabKind, tabName, type StripEntry, type Tab } from '$lib/state.svelte'
   import { tabMenu } from '$lib/tab-menu.svelte'
   import { tint } from '$lib/folders'
   import { MOD, shellSafeLabel } from '$lib/keys'
@@ -72,7 +72,7 @@
         onauxclick={(e) => onauxclick(e, entry)}
         oncontextmenu={(e) => app.openMenu(e, tabMenu(tab, 'strip'))}
       >
-        <span class="kind">{tab.kind}</span>
+        <span class="kind">{tabKind(tab)}</span>
         {#if worst !== 'connected'}<span class={['dot', worst]} title={worst}></span>{/if}
         <span class="title">{entry.panes.map(tabName).join(' | ')}</span>
         {#if entry.split?.broadcast}<span class="cast" title="Broadcasting input to all panes"><RadioTower size={13} /></span>{/if}

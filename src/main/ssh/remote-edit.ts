@@ -29,7 +29,7 @@ interface Edit {
   pending: boolean
 }
 
-const EDIT_ROOT = join(tmpdir(), 'bawkterm-edit')
+export const EDIT_ROOT = join(tmpdir(), 'bawkterm-edit')
 
 // types whose default action opens them as text; anything else could run, so it goes to Notepad or TextEdit
 const SAFE_DEFAULT = new Set(

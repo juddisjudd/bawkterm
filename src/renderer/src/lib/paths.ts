@@ -35,3 +35,5 @@ export const localPath: PathOps = {
     return i <= 0 ? '/' : path.slice(0, i)
   }
 }
+
+export const isDatabase = (path: string): boolean => /\.(db|db3|sqlite|sqlite3|s3db|sl3)$/i.test(path)

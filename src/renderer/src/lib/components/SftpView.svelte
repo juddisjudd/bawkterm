@@ -217,8 +217,7 @@
       onmkdir={(p) => api.sftp.mkdir(tab.id, p)}
       onrename={renameRemote}
       onremove={removeRemote}
-      onedit={(e) =>
-        app.settings.editorCommand ? api.sftp.edit(tab.id, e.path).catch((err) => app.fail(err)) : app.openEditor(tab, e.path)}
+      onedit={(e) => app.editFile(tab, e.path)}
       onterminal={openTerminal}
       tools={host ? bookmarkTools : undefined}
       {marks}

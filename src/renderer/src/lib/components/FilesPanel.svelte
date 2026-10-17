@@ -191,8 +191,7 @@
     onmkdir={(p) => api.sftp.mkdir(sid, p)}
     onrename={(from, to) => api.sftp.rename(sid, from, to)}
     onremove={(entries) => api.sftp.remove(sid, entries.map((e) => e.path))}
-    onedit={(e) =>
-      app.settings.editorCommand ? api.sftp.edit(sid, e.path).catch((err) => app.fail(err)) : app.openEditor(tab, e.path, sid)}
+    onedit={(e) => app.editFile(tab, e.path, sid)}
     onterminal={oncd}
     terminalLabel="cd here in the terminal"
     {tools}

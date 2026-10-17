@@ -1,6 +1,7 @@
 import { DEFAULT_SETTINGS } from '@shared/defaults'
 import { appColors, findTerminalTheme, setImportedThemes } from './theme'
 import { grid, insert, layout, leaves, mapPanes, neighbor, sibling, type Direction, type PaneDir, type PaneTree } from './panes'
+import { isDatabase } from './paths'
 import type {
   EditInfo,
   ConnectTarget,
@@ -38,7 +39,7 @@ export interface Tab {
   command?: string
   dropped?: boolean
   bell?: boolean
-  edit?: { sessionId: string; path: string }
+  edit?: { sessionId: string; path: string; sqlite?: boolean }
   dirty?: boolean
   label?: string
   color?: FolderColor
@@ -47,6 +48,8 @@ export interface Tab {
 }
 
 export const tabName = (tab: Tab): string => tab.label || tab.title
+
+export const tabKind = (tab: Tab): string => (tab.edit?.sqlite ? 'db' : tab.kind)
 
 export const isTerminal = (tab: Tab): boolean => tab.kind === 'ssh' || tab.kind === 'local'
 
@@ -503,10 +506,16 @@ class AppState {
       target: $state.snapshot(from.target),
       title,
       status: 'connected',
-      edit: { sessionId, path }
+      edit: { sessionId, path, ...(isDatabase(path) ? { sqlite: true } : {}) }
     }
     this.tabs.push(tab)
     this.active = tab.id
+  }
+
+  // a text editor cannot read a SQLite file, so those open in the built-in viewer even when an editor is set
+  editFile(from: Tab, path: string, sessionId = from.id): void {
+    if (this.settings.editorCommand && !isDatabase(path)) void api.sftp.edit(sessionId, path).catch((err) => this.fail(err))
+    else this.openEditor(from, path, sessionId)
   }
 
   openHost(kind: TabKind, hostId: string, place: Placement | null = null): void {
@@ -553,8 +562,10 @@ class AppState {
     const [tab] = this.tabs.splice(i, 1)
     if (tab.kind === 'ssh') void api.ssh.close(id)
     else if (tab.kind === 'local') void api.shell.close(id)
-    else if (tab.kind === 'sftp' || tab.kind === 'edit') void api.sftp.close(id)
-    else void api.docker.close(id)
+    else if (tab.kind === 'sftp' || tab.kind === 'edit') {
+      void api.sftp.close(id)
+      if (tab.edit?.sqlite) void api.db.close(id)
+    } else void api.docker.close(id)
     this.transfers = this.transfers.filter((t) => t.sessionId !== id && t.sessionId !== filesSession(id))
     const split = this.splitOf(id)
     const next = split && sibling(split.root, id)
