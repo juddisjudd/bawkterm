@@ -10,6 +10,13 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # svelte-check refuses TypeScript 7 unless TypeScript 6 is installed beside it
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # must match the Node that Electron bundles, not the latest Node
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
