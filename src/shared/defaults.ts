@@ -65,6 +65,7 @@ export function blankHost(): Host {
     identityId: '',
     useAgent: false,
     agentForward: false,
+    legacyAlgorithms: false,
     jumpHostId: '',
     tags: [],
     notes: '',

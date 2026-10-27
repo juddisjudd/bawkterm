@@ -20,6 +20,7 @@ export interface Found extends Endpoint {
   notes?: string
   tags?: string[]
   bookmarks?: string[]
+  legacyAlgorithms?: boolean
   // another found host by its label, or a server to connect through
   jump?: { label: string } | Endpoint
 }
@@ -97,7 +98,12 @@ export async function commit(vault: Vault, scan: Scan): Promise<ImportSummary> {
       continue
     }
     try {
-      const host = await makeHost(f.label, f.group, f, { notes: f.notes ?? '', tags: f.tags ?? [], bookmarks: f.bookmarks ?? [] })
+      const host = await makeHost(f.label, f.group, f, {
+        notes: f.notes ?? '',
+        tags: f.tags ?? [],
+        bookmarks: f.bookmarks ?? [],
+        legacyAlgorithms: f.legacyAlgorithms ?? false
+      })
       hosts.push(host)
       made.set(f, host)
       byLabel.set(f.label, host)

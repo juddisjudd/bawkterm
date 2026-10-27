@@ -2,8 +2,13 @@ import { createHash } from 'node:crypto'
 import type { Duplex } from 'node:stream'
 import {
   Client,
+  type AlgorithmList,
+  type Algorithms,
   type AnyAuthMethod,
   type AuthenticationType,
+  type CipherAlgorithm,
+  type KexAlgorithm,
+  type MacAlgorithm,
   type NextAuthHandler,
   type ParsedKey,
   type ServerHostKeyAlgorithm
@@ -42,10 +47,15 @@ interface Resolved {
   key?: SshKey
   useAgent: boolean
   agentForward: boolean
+  legacy: boolean
   jump?: ConnectTarget
 }
 
 const MAX_HOPS = 5
+// offered after every default, so a server only gets one when it supports nothing newer
+const LEGACY_KEX: KexAlgorithm[] = ['diffie-hellman-group14-sha1', 'diffie-hellman-group1-sha1', 'diffie-hellman-group-exchange-sha1']
+const LEGACY_CIPHERS: CipherAlgorithm[] = ['aes128-cbc', 'aes192-cbc', 'aes256-cbc', '3des-cbc']
+const LEGACY_MACS: MacAlgorithm[] = ['hmac-sha1-96', 'hmac-md5', 'hmac-md5-96']
 const SUPPORTED_HOST_KEY = [
   'ssh-ed25519',
   'ecdsa-sha2-nistp256',
@@ -81,7 +91,7 @@ async function resolveTarget(target: ConnectTarget, vault: Vault): Promise<Resol
   if ('adhoc' in target) {
     const { address, port, username, keyId, keyFile, agentForward = false, jump } = target.adhoc
     const key = keyFile ? await keyFromFile(keyFile, vault) : data.keys.find((k) => k.id === keyId)
-    return { label: address, address, port, username, password: '', key, useAgent: true, agentForward, jump }
+    return { label: address, address, port, username, password: '', key, useAgent: true, agentForward, legacy: false, jump }
   }
   const host = data.hosts.find((h) => h.id === target.hostId)
   if (!host) throw new Error('Host not found in vault')
@@ -97,6 +107,7 @@ async function resolveTarget(target: ConnectTarget, vault: Vault): Promise<Resol
     key: keyId ? data.keys.find((k) => k.id === keyId) : undefined,
     useAgent: host.useAgent,
     agentForward: host.agentForward,
+    legacy: host.legacyAlgorithms,
     jump: host.jumpHostId ? { hostId: host.jumpHostId } : undefined
   }
 }
@@ -120,6 +131,11 @@ function friendlyError(err: Error & { code?: string; level?: string }, r: Resolv
   if (err.level === 'client-authentication') return new Error(`Authentication failed for ${r.username}@${where}`)
   if (/verification failed/i.test(err.message)) return new Error(`Host key for ${where} was not trusted`)
   if (err.level === 'client-timeout') return new Error(`Timed out waiting for ${where} to respond`)
+  const mismatch = /^Handshake failed: no matching (?:\S+ )?(key exchange|cipher|MAC)/.exec(err.message)
+  if (mismatch && !r.legacy) {
+    const fix = r.hostId ? 'turn on legacy algorithms in the host settings' : 'save it as a host and turn on legacy algorithms'
+    return new Error(`No ${mismatch[1]} in common with ${where}. If it is an older device, ${fix}.`)
+  }
   return err
 }
 
@@ -174,6 +190,13 @@ function hostKeyOrder(
     .flatMap((k) => (k.keyType === 'ssh-rsa' ? ['rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa'] : [k.keyType]))
     .filter((a): a is ServerHostKeyAlgorithm => SUPPORTED_HOST_KEY.includes(a))
   return algos.length ? { remove: algos, prepend: algos, append: [] } : undefined
+}
+
+function algorithmsFor(r: Resolved, ctx: ConnectContext): Algorithms {
+  const serverHostKey = hostKeyOrder(r, ctx)
+  if (!r.legacy) return { serverHostKey }
+  const after = <T>(list: T[]): AlgorithmList<T> => ({ remove: [], prepend: [], append: list })
+  return { serverHostKey, kex: after(LEGACY_KEX), cipher: after(LEGACY_CIPHERS), hmac: after(LEGACY_MACS) }
 }
 
 async function unlockKey(r: Resolved, ctx: ConnectContext): Promise<ParsedKey | null> {
@@ -389,7 +412,7 @@ function connectOne(r: Resolved, ctx: ConnectContext, sock?: Duplex): Promise<Cl
       readyTimeout: 0,
       keepaliveInterval: settings.keepAliveSec > 0 ? settings.keepAliveSec * 1000 : 0,
       keepaliveCountMax: 3,
-      algorithms: { serverHostKey: hostKeyOrder(r, local) },
+      algorithms: algorithmsFor(r, local),
       hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
         verifyHostKey(key, r, local).then(verify, () => verify(false))
       },

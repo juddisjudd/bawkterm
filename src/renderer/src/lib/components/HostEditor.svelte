@@ -196,6 +196,12 @@
     </select>
     {#if rdp && host.jumpHostId}<span class="hint">Remote Desktop is tunnelled through this SSH host.</span>{/if}
   </label>
+  {#if !rdp}
+    <Checkbox bind:checked={host.legacyAlgorithms} label="allow legacy SHA-1 key exchange and CBC ciphers for older devices" />
+    {#if host.legacyAlgorithms}
+      <span class="hint">Used only when the server offers nothing newer. They are weak, so turn this on only for devices you cannot update.</span>
+    {/if}
+  {/if}
   <label class="field">
     <span class="label">notes</span>
     <textarea class="textarea" bind:value={host.notes} spellcheck="false"></textarea>

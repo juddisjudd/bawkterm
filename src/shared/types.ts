@@ -89,6 +89,7 @@ export interface Host {
   identityId: string
   useAgent: boolean
   agentForward: boolean
+  legacyAlgorithms: boolean
   jumpHostId: string
   tags: string[]
   notes: string

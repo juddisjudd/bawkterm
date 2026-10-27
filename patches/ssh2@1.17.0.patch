@@ -126,6 +126,31 @@ index 7302488102161b5b627f6f089d502caa6df0f356..b769871b35070c43661c18024e72016f
  
        // Servers shouldn't send packet type 60 in response to signed publickey
        // attempts, but if they do, interpret as type 60.
+diff --git a/lib/protocol/kex.js b/lib/protocol/kex.js
+index 811e631b8ab78d32776e540919d25aae56d628f7..9564b68d89b07755eb6e8dc70a6618ada2027cd3 100644
+--- a/lib/protocol/kex.js
++++ b/lib/protocol/kex.js
+@@ -1539,6 +1539,9 @@ const createKeyExchange = (() => {
+     }
+   }
+ 
++  // RFC 2409 Oakley group 2, which diffie-hellman-group1-sha1 uses; Electron's BoringSSL has no built-in modp2
++  const MODP2_PRIME = 'ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece65381ffffffffffffffff';
++
+   class DHExchange extends KeyExchange {
+     constructor(groupName, hashName, ...args) {
+       super(...args);
+@@ -1566,7 +1569,9 @@ const createKeyExchange = (() => {
+     }
+     generateKeys() {
+       if (!this._dh) {
+-        this._dh = createDiffieHellmanGroup(this.groupName);
++        this._dh = (this.groupName === 'modp2'
++          ? createDiffieHellman(MODP2_PRIME, 'hex', 2)
++          : createDiffieHellmanGroup(this.groupName));
+         this._public = this._dh.generateKeys();
+       }
+     }
 diff --git a/lib/protocol/keyParser.js b/lib/protocol/keyParser.js
 index a276c1aed3dca46469b0c566ad12f989c65e92e5..09412dfbbae37d7b2c4459511404b2267dd4c0bb 100644
 --- a/lib/protocol/keyParser.js

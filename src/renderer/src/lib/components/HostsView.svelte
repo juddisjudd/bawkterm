@@ -60,6 +60,7 @@
     if (h.password) out.push('pw')
     if (h.useAgent && h.kind === 'ssh') out.push('agent')
     if (h.agentForward && h.kind === 'ssh') out.push('fwd')
+    if (h.legacyAlgorithms && h.kind === 'ssh') out.push('legacy')
     if (h.jumpHostId) out.push('jump')
     return out
   }

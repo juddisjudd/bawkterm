@@ -12,6 +12,11 @@ interface Block {
 export const SSH_CONFIG = join(homedir(), '.ssh', 'config')
 // what ssh tries, in its order, for a host with no IdentityFile; security key files need their device, so agents cover those
 const DEFAULT_KEYS = ['id_rsa', 'id_ecdsa', 'id_ed25519']
+const LEGACY_ALGORITHM = /^(diffie-hellman-group(1|14|-exchange)-sha1|.+-cbc|hmac-md5(-96)?|hmac-sha1-96)$/
+
+// a "-" list removes algorithms, so only a list that sets or adds a legacy one counts
+const namesLegacy = (list: string | undefined): boolean =>
+  !!list && !list.startsWith('-') && list.replace(/^[+^]/, '').split(',').some((a) => LEGACY_ALGORITHM.test(a.trim()))
 
 function parse(text: string): Block[] {
   // options above the first Host line apply to every host
@@ -94,7 +99,8 @@ export async function scanSshConfig(file = SSH_CONFIG, text?: string): Promise<S
       username,
       group: 'ssh config',
       keyFile: keys.find((f) => existsSync(f)) ?? keys[0],
-      useAgent: named.length ? undefined : true
+      useAgent: named.length ? undefined : true,
+      legacyAlgorithms: ['kexalgorithms', 'ciphers', 'macs'].some((k) => namesLegacy(opt(k)))
     }
     const jump = opt('proxyjump')
     if (jump && jump !== 'none') {

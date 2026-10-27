@@ -106,6 +106,7 @@ export function cleanHost(v: unknown): Host {
     identityId: id(h.identityId ?? '', 'identity'),
     useAgent: bool(h.useAgent ?? false, 'agent setting'),
     agentForward: bool(h.agentForward ?? false, 'agent forwarding setting'),
+    legacyAlgorithms: bool(h.legacyAlgorithms ?? false, 'legacy algorithms setting'),
     jumpHostId: id(h.jumpHostId ?? '', 'jump host'),
     tags: list(h.tags ?? [], 'tags', 64, (t) => line(t, 'tag', 64)),
     notes: text(h.notes ?? '', 'notes', 20_000),
