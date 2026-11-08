@@ -405,7 +405,7 @@ export interface FileEntry {
   mode: number
 }
 
-export type TransferDirection = 'upload' | 'download'
+export type TransferDirection = 'upload' | 'download' | 'delete'
 export type TransferState = 'queued' | 'active' | 'done' | 'error' | 'cancelled' | 'skipped'
 
 export interface TransferInfo {

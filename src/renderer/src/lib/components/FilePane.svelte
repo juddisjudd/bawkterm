@@ -51,7 +51,7 @@
     onreceive: (paths: string[], from: Side | 'os') => void
     onmkdir: (path: string) => Promise<void>
     onrename: (from: string, to: string) => Promise<void>
-    onremove: (entries: FileEntry[]) => Promise<void>
+    onremove: (entries: FileEntry[]) => Promise<unknown>
     onopen?: (entry: FileEntry) => void
     onedit?: (entry: FileEntry) => void
     onterminal?: (path: string) => void
@@ -65,6 +65,7 @@
   let loading = $state(false)
   let error = $state('')
   let selected = $state<string[]>([])
+  let removing = $state<string[]>([])
   let anchor = $state(-1)
   let sortKey = $state<'name' | 'size' | 'mtime'>('name')
   let sortDir = $state(1)
@@ -179,20 +180,23 @@
   }
 
   async function remove(list: FileEntry[]): Promise<void> {
-    if (!list.length) return
-    const what = list.length === 1 ? `"${visibleName(list[0].name)}"` : `${list.length} items`
+    const targets = list.filter((e) => !removing.includes(e.path))
+    if (!targets.length) return
+    const what = targets.length === 1 ? `"${visibleName(targets[0].name)}"` : `${targets.length} items`
     const message =
       side === 'local'
         ? `Move ${what} to the Recycle Bin?`
         : `Permanently delete ${what} on the server? Folders are deleted with everything inside.`
     if (!(await app.confirm('Delete', message))) return
+    const paths = targets.map((e) => e.path)
+    removing = [...removing, ...paths]
     try {
-      await onremove(list)
-      await refresh()
+      await onremove(targets)
     } catch (err) {
       app.fail(err)
-      await refresh()
     }
+    await refresh()
+    removing = removing.filter((p) => !paths.includes(p))
   }
 
   function markItems(paths: string[]): MenuItem[] {
@@ -413,7 +417,7 @@
     {/if}
     {#each visible as entry, i (entry.path)}
       <div
-        class={['row', side === 'remote' && 'remote', selected.includes(entry.path) && 'selected']}
+        class={['row', side === 'remote' && 'remote', selected.includes(entry.path) && 'selected', removing.includes(entry.path) && 'removing']}
         role="option"
         tabindex="-1"
         aria-selected={selected.includes(entry.path)}
@@ -427,7 +431,7 @@
           {#if isDirLike(entry)}<Folder size={14} class="icon dir" />{:else if entry.kind === 'link'}<FileSymlink size={14} class="icon" />{:else}<FileIcon size={14} class="icon" />{/if}
           <span class="text">{visibleName(entry.name)}</span>
         </span>
-        <span class="num muted">{isDirLike(entry) ? '' : bytes(entry.size)}</span>
+        <span class="num muted">{removing.includes(entry.path) ? 'deleting' : isDirLike(entry) ? '' : bytes(entry.size)}</span>
         <span class="muted">{date(entry.mtime)}</span>
         {#if side === 'remote'}<span class="muted">{mode(entry.mode)}</span>{/if}
       </div>
@@ -577,6 +581,9 @@
   .row.selected {
     background: var(--bg-selected);
     color: var(--text-strong);
+  }
+  .row.removing {
+    opacity: 0.5;
   }
   .list:focus-within .row.selected,
   .list:focus .row.selected {

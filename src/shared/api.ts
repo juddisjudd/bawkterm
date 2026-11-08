@@ -153,7 +153,7 @@ export interface BawkApi {
     mkdir(sessionId: string, path: string): Promise<void>
     rename(sessionId: string, from: string, to: string): Promise<void>
     chmod(sessionId: string, path: string, mode: number): Promise<void>
-    remove(sessionId: string, paths: string[]): Promise<void>
+    remove(sessionId: string, paths: string[]): Promise<boolean>
     upload(sessionId: string, localPaths: string[], remoteDir: string): Promise<void>
     download(sessionId: string, remotePaths: string[], localDir: string): Promise<void>
     cancel(transferId: string): Promise<void>

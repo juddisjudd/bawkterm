@@ -87,7 +87,7 @@
   }
 
   async function removeRemote(entries: FileEntry[]): Promise<void> {
-    await api.sftp.remove(tab.id, entries.map((e) => e.path))
+    if (!(await api.sftp.remove(tab.id, entries.map((e) => e.path)))) return
     changeHost((h) => {
       let next: Pick<Host, 'bookmarks' | 'folderColors'> | null = null
       for (const e of entries) next = remapFolders(next ?? h, e.path, null) ?? next
@@ -132,7 +132,7 @@
       clearTimeout(timer)
       timer = setTimeout(() => {
         if (info.direction === 'upload') remotePane?.refresh()
-        else localPane?.refresh()
+        else if (info.direction === 'download') localPane?.refresh()
       }, 150)
     })
     return () => {

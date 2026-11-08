@@ -18,6 +18,7 @@ const BOM = Buffer.from([0xef, 0xbb, 0xbf])
 const SQLITE_MAGIC = Buffer.from('SQLite format 3\0')
 const PARALLEL = 32
 const FILES_AT_ONCE = 8
+const SHOW_DELETE_AFTER = 300
 const S_IFMT = 0o170000
 const S_IFDIR = 0o040000
 const S_IFLNK = 0o120000
@@ -32,6 +33,7 @@ interface Batch {
 interface Job {
   info: TransferInfo
   cancelled: boolean
+  hidden?: boolean
   batch: Batch
   run: (job: Job) => Promise<void>
 }
@@ -90,9 +92,9 @@ function pump(size: number, work: (pos: number, len: number) => Promise<void>, j
   })
 }
 
-function each<T>(items: T[], work: (item: T) => Promise<void>, job: Job): Promise<void> {
+function each<T>(items: T[], work: (item: T) => Promise<void>, job: Job, count = FILES_AT_ONCE): Promise<void> {
   let next = 0
-  return parallel(Math.min(FILES_AT_ONCE, items.length), job, () => {
+  return parallel(Math.min(count, items.length), job, () => {
     if (next >= items.length) return undefined
     const item = items[next++]
     return () => work(item)
@@ -294,22 +296,67 @@ export class SftpSessions {
     await call((cb) => sftp.chmod(path, mode, cb))
   }
 
-  async remove(sessionId: string, paths: string[]): Promise<void> {
+  async remove(sessionId: string, paths: string[]): Promise<boolean> {
     const sftp = this.get(sessionId)
-    const removeOne = async (path: string): Promise<void> => {
-      const st = await call<Stats>((cb) => sftp.lstat(path, cb))
-      if (!isDir(st.mode)) {
-        await call((cb) => sftp.unlink(path, cb))
-        return
-      }
-      const items = await call<{ filename: string }[]>((cb) => sftp.readdir(path, cb))
-      for (const item of items) {
-        if (item.filename === '.' || item.filename === '..') continue
-        await removeOne(posix.join(path, item.filename))
-      }
-      await call((cb) => sftp.rmdir(path, cb))
+    if (!paths.length) return true
+    const name = paths.length === 1 ? posix.basename(paths[0]) : `${paths.length} items`
+    const source = paths.length === 1 ? paths[0] : posix.dirname(paths[0])
+    const job = this.createJob(sessionId, 'delete', name, source, '', {}, (j) => this.runDelete(sftp, paths, j))
+    // a quick delete finishes before it would show, so it never clutters the activity list
+    job.hidden = true
+    const show = setTimeout(() => {
+      job.hidden = false
+      this.emit(job, true)
+    }, SHOW_DELETE_AFTER)
+    await this.execute(job)
+    clearTimeout(show)
+    if (job.info.state === 'error') throw new Error(job.info.error)
+    return job.info.state === 'done'
+  }
+
+  private async runDelete(sftp: SFTPWrapper, paths: string[], job: Job): Promise<void> {
+    const lstat = (p: string): Promise<Stats> => call<Stats>((cb) => sftp.lstat(p, cb))
+    const files: string[] = []
+    const levels: string[][] = []
+    const add = (p: string, folder: boolean, dirs: string[]): void => {
+      if (folder) dirs.push(p)
+      else files.push(p)
+      job.info.files++
+      this.emit(job)
     }
-    for (const path of paths) await removeOne(path)
+    job.info.scanning = true
+    this.emit(job, true)
+    const top: string[] = []
+    await each(paths, async (p) => add(p, isDir((await lstat(p)).mode), top), job)
+    for (let level = top; level.length; ) {
+      levels.push(level)
+      const below: string[] = []
+      await each(
+        level,
+        async (dir) => {
+          const items = await call<{ filename: string; attrs: Stats }[]>((cb) => sftp.readdir(dir, cb))
+          await Promise.all(
+            items.map(async ({ filename, attrs }) => {
+              if (filename === '.' || filename === '..') return
+              const p = posix.join(dir, filename)
+              // some servers describe a linked folder as a folder; lstat keeps the delete inside the tree
+              add(p, isDir(attrs.mode) && isDir((await lstat(p)).mode), below)
+            })
+          )
+        },
+        job
+      )
+      level = below
+    }
+    this.scanned(job)
+    const removed = (): void => {
+      job.info.filesDone++
+      this.emit(job)
+    }
+    await each(files, (p) => call((cb) => sftp.unlink(p, cb)).then(removed), job, PARALLEL)
+    for (const dirs of levels.reverse()) {
+      await each(dirs, (p) => call((cb) => sftp.rmdir(p, cb)).then(removed), job, PARALLEL)
+    }
   }
 
   upload(sessionId: string, localPaths: string[], remoteDir: string): void {
@@ -384,6 +431,21 @@ export class SftpSessions {
   ): void {
     const session = this.sessions.get(sessionId)
     if (!session?.sftp) throw new Error('SFTP session is not connected')
+    const job = this.createJob(sessionId, direction, name, source, dest, batch, run)
+    session.queue.push(job)
+    this.emit(job, true)
+    void this.drain(session)
+  }
+
+  private createJob(
+    sessionId: string,
+    direction: TransferDirection,
+    name: string,
+    source: string,
+    dest: string,
+    batch: Batch,
+    run: Job['run']
+  ): Job {
     const job: Job = {
       info: {
         id: randomUUID(),
@@ -404,9 +466,7 @@ export class SftpSessions {
       run
     }
     this.jobs.set(job.info.id, job)
-    session.queue.push(job)
-    this.emit(job, true)
-    void this.drain(session)
+    return job
   }
 
   private async drain(session: Session): Promise<void> {
@@ -414,25 +474,29 @@ export class SftpSessions {
     session.running = true
     while (session.queue.length) {
       const job = session.queue.shift()!
-      if (job.cancelled) continue
-      job.info.state = 'active'
-      job.info.startedAt = Date.now()
-      this.emit(job, true)
-      try {
-        await job.run(job)
-        job.info.state = 'done'
-      } catch (err) {
-        job.info.state = err instanceof SkippedError ? 'skipped' : err instanceof CancelledError || job.cancelled ? 'cancelled' : 'error'
-        if (job.info.state === 'error') job.info.error = (err as Error).message
-      }
-      this.emit(job, true)
-      this.jobs.delete(job.info.id)
-      this.lastEmit.delete(job.info.id)
+      if (!job.cancelled) await this.execute(job)
     }
     session.running = false
   }
 
+  private async execute(job: Job): Promise<void> {
+    job.info.state = 'active'
+    job.info.startedAt = Date.now()
+    this.emit(job, true)
+    try {
+      await job.run(job)
+      job.info.state = 'done'
+    } catch (err) {
+      job.info.state = err instanceof SkippedError ? 'skipped' : err instanceof CancelledError || job.cancelled ? 'cancelled' : 'error'
+      if (job.info.state === 'error') job.info.error = (err as Error).message
+    }
+    this.emit(job, true)
+    this.jobs.delete(job.info.id)
+    this.lastEmit.delete(job.info.id)
+  }
+
   private emit(job: Job, force = false): void {
+    if (job.hidden) return
     const now = Date.now()
     if (!force && now - (this.lastEmit.get(job.info.id) ?? 0) < 120) return
     this.lastEmit.set(job.info.id, now)

@@ -1,5 +1,6 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x'
+  import Trash from '@lucide/svelte/icons/trash-2'
   import type { TransferInfo } from '@shared/types'
   import { app } from '$lib/state.svelte'
   import { bar, bytes, visibleName } from '$lib/format'
@@ -16,14 +17,25 @@
     return seconds > 0.5 ? `${bytes(t.bytes / seconds)}/s` : ''
   }
 
+  function fraction(t: TransferInfo): number {
+    const [done, total] = t.direction === 'delete' ? [t.filesDone, t.files] : [t.bytes, t.total]
+    return total ? done / total : t.state === 'done' ? 1 : 0
+  }
+
+  function amount(t: TransferInfo): string {
+    if (t.direction === 'delete') return t.scanning ? `${t.files} found` : `${t.filesDone}/${t.files} items`
+    return `${bytes(t.bytes)} / ${bytes(t.total)}${t.files > 1 ? ` · ${t.filesDone}/${t.files} files` : ''}`
+  }
+
   function label(t: TransferInfo): string {
+    const deleting = t.direction === 'delete'
     switch (t.state) {
       case 'queued':
         return 'queued'
       case 'active':
-        return t.scanning ? 'scanning' : rate(t)
+        return t.scanning ? 'scanning' : deleting ? 'deleting' : rate(t)
       case 'done':
-        return 'done'
+        return deleting ? 'deleted' : 'done'
       case 'cancelled':
         return 'cancelled'
       case 'error':
@@ -38,7 +50,7 @@
   <section class="transfers">
     <header>
       <button type="button" class="toggle" onclick={() => (open = !open)}>
-        {open ? '▾' : '▸'} transfers
+        {open ? '▾' : '▸'} activity
         <span class="muted">{running ? `${running} running` : 'idle'}</span>
       </button>
       {#if finished}
@@ -48,16 +60,17 @@
     {#if open}
       <ul>
         {#each list as t (t.id)}
-          {@const fraction = t.total ? t.bytes / t.total : t.state === 'done' ? 1 : 0}
+          {@const done = fraction(t)}
+          {@const deleting = t.direction === 'delete'}
           <li class={t.state}>
-            <span class="dir">{t.direction === 'upload' ? '↑' : '↓'}</span>
-            <span class="name" title={`${t.source} → ${t.dest}`}>{visibleName(t.name)}</span>
-            <span class="bar">{bar(fraction)} {Math.floor(fraction * 100)}%</span>
-            <span class="pct">{Math.floor(fraction * 100)}%</span>
-            <span class="size">{bytes(t.bytes)} / {bytes(t.total)}{t.files > 1 ? ` · ${t.filesDone}/${t.files} files` : ''}</span>
+            <span class="dir">{#if deleting}<Trash size={12} />{:else}{t.direction === 'upload' ? '↑' : '↓'}{/if}</span>
+            <span class="name" title={deleting ? t.source : `${t.source} → ${t.dest}`}>{visibleName(t.name)}</span>
+            <span class="bar">{bar(done)} {Math.floor(done * 100)}%</span>
+            <span class="pct">{Math.floor(done * 100)}%</span>
+            <span class="size">{amount(t)}</span>
             <span class="state" title={t.error}>{t.error ?? label(t)}</span>
             {#if t.state === 'active' || t.state === 'queued'}
-              <button type="button" class="btn small icon ghost" aria-label="Cancel transfer" onclick={() => window.api.sftp.cancel(t.id)}>
+              <button type="button" class="btn small icon ghost" aria-label={deleting ? 'Cancel delete' : 'Cancel transfer'} onclick={() => window.api.sftp.cancel(t.id)}>
                 <X />
               </button>
             {:else}
@@ -114,6 +127,7 @@
     font-size: 12px;
   }
   .dir {
+    display: flex;
     color: var(--text-weak);
   }
   .name {
