@@ -40,7 +40,7 @@
     "@electron-toolkit/tsconfig": "2.0.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@lezer/highlight": "1.2.5",
-    "@lucide/svelte": "1.61.0",
+    "@lucide/svelte": "1.70.0",
     "@noble/hashes": "2.4.0",
     "@resvg/resvg-js": "2.6.2",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
@@ -58,10 +58,10 @@
     "electron-builder": "26.18.0",
     "electron-vite": "6.0.0",
     "smol-toml": "1.9.1",
-    "svelte": "5.57.2",
-    "svelte-check": "4.7.7",
+    "svelte": "5.57.3",
+    "svelte-check": "4.7.8",
     "typescript": "6.0.3",
-    "vite": "8.3.5"
+    "vite": "8.3.6"
   },
   "packageManager": "bun@1.4.0",
   "trustedDependencies": [
