@@ -19,6 +19,7 @@ try {
   $null = [Windows.Security.Cryptography.CryptographicBuffer, Windows.Security.Cryptography, ContentType = WindowsRuntime]
   $manager = [Windows.Security.Credentials.KeyCredentialManager]
   $buffer = [Windows.Security.Cryptography.CryptographicBuffer]
+  function EncodeBuffer($value) { $buffer.GetMethod('EncodeToBase64String').Invoke($null, @($value)) }
   if (-not (Await ($manager::IsSupportedAsync()) ([bool]))) { Emit @{ status = 'Unsupported' }; exit }
   if ($env:BAWK_MODE -eq 'check') { Emit @{ status = 'Supported' }; exit }
   if ($env:BAWK_MODE -eq 'delete') { AwaitAction ($manager::DeleteAsync($env:BAWK_KEYNAME)); Emit @{ status = 'Success' }; exit }
@@ -30,12 +31,13 @@ try {
   }
   if ($res.Status -ne 'Success') { Emit @{ status = [string]$res.Status }; exit }
   $challenge = $buffer::DecodeFromBase64String($env:BAWK_CHALLENGE)
-  $signed = Await ($res.Credential.RequestSignAsync($challenge)) ([Windows.Security.Credentials.KeyCredentialOperationResult])
+  $sign = [Windows.Security.Credentials.KeyCredential].GetMethod('RequestSignAsync')
+  $signed = Await ($sign.Invoke($res.Credential, @($challenge))) ([Windows.Security.Credentials.KeyCredentialOperationResult])
   if ($signed.Status -ne 'Success') { Emit @{ status = [string]$signed.Status }; exit }
   Emit @{
     status = 'Success'
-    signature = $buffer::EncodeToBase64String($signed.Result)
-    publicKey = $buffer::EncodeToBase64String($res.Credential.RetrievePublicKey())
+    signature = EncodeBuffer $signed.Result
+    publicKey = EncodeBuffer ($res.Credential.RetrievePublicKey())
   }
 } catch {
   Emit @{ status = 'Error'; message = $_.Exception.Message }
